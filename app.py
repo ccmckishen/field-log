@@ -61,9 +61,6 @@ def save_log(seed_id, action, notes):
     data = {"seed_id": seed_id, "action": action, "notes": notes, "user_id": user.id if user else None}
     supabase.table("field_logs").insert(data).execute()
 
-def delete_log(log_id):
-    supabase.table("field_logs").delete().eq("log_id", log_id).execute()
-
 df = load_library()
 
 # --- 4. APP UI ---
@@ -77,7 +74,6 @@ with tab1:
     for index, row in filtered_df.iterrows():
         with st.expander(f"🌿 {row['common_name']} - {row['variety']}"):
             st.caption(f"Botanical: *{row['genus']} {row['species']}*")
-            # Fixed the string literal error here
             st.info(row.get('sowing_instructions', 'No instructions logged.'))
 
 with tab2:
@@ -100,13 +96,20 @@ with tab2:
         st.divider()
         st.write("### 📜 My Recent Logs")
         response = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
-        st.write(f"DEBUG: Found {len(response.data)} logs.")
+        
+        # Create a lookup dictionary: seed_id -> Variety Name
+        variety_lookup = dict(zip(df['seed_id'], df['variety']))
         
         for log in response.data:
-            current_id = log.get('log_id')
-            st.write("---")
-            st.write(f"**ID:** {current_id} | **Action:** {log.get('action')} | **Notes:** {log.get('notes')}")
+            log_id = log.get('log_id')
+            seed_id = log.get('seed_id')
+            # Look up the variety name from our loaded library
+            variety_name = variety_lookup.get(seed_id, "Unknown Variety")
             
-            if st.button("🗑️ Delete", key=f"del_{current_id}"):
-                supabase.table("field_logs").delete().eq("log_id", current_id).execute()
+            st.write("---")
+            st.write(f"**Variety:** {variety_name} | **Action:** {log.get('action')}")
+            st.write(f"*Notes:* {log.get('notes', 'N/A')}")
+            
+            if st.button("🗑️ Delete", key=f"del_{log_id}"):
+                supabase.table("field_logs").delete().eq("log_id", log_id).execute()
                 st.rerun()
