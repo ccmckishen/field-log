@@ -83,5 +83,3 @@ with tab1:
         with st.expander(f"🌿 {row['common_name']} - {row['variety']}"):
             st.caption(f"Botanical: *{row['genus']} {row['species']}*")
             st.info(row.get('sowing_instructions', 'No instructions logged.'))
-
-with tab2:
