@@ -69,7 +69,7 @@ tab1, tab2 = st.tabs(["🗂️ Library", "📝 Field Log"])
 
 with tab1:
     st.write(f"Active Collection: **{len(df)}** varieties")
-    search_term = st.text_input("🔍 Quick Search...")
+    search_term = st.text_input("🔍 Quick Search Library...")
     filtered_df = df[df['common_name'].str.contains(search_term, case=False, na=False) | df['variety'].str.contains(search_term, case=False, na=False)] if search_term else df
     for index, row in filtered_df.iterrows():
         with st.expander(f"🌿 {row['common_name']} - {row['variety']}"):
@@ -81,35 +81,7 @@ with tab2:
         st.warning("Please log in to record or view your logs.")
     else:
         st.write("### 📝 Record an Action")
-        plant_dict = dict(zip(df['display_name'], df['seed_id']))
-        with st.form("log_form", clear_on_submit=True):
-            selected_plant = st.selectbox("1. Which plant?", ["-- Choose --"] + list(plant_dict.keys()))
-            action = st.selectbox("2. Action?", ["Started Indoors", "Direct Sowed", "Harvested", "General Observation"])
-            notes = st.text_area("3. Notes")
-            if st.form_submit_button("☁️ Save to Cloud"):
-                if selected_plant == "-- Choose --": st.error("Select a plant!")
-                else:
-                    save_log(plant_dict[selected_plant], action, notes)
-                    st.success("Logged successfully!")
-                    st.rerun()
-
-        st.divider()
-        st.write("### 📜 My Recent Logs")
-        response = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
         
-        # Create a lookup dictionary: seed_id -> Variety Name
-        variety_lookup = dict(zip(df['seed_id'], df['variety']))
-        
-        for log in response.data:
-            log_id = log.get('log_id')
-            seed_id = log.get('seed_id')
-            # Look up the variety name from our loaded library
-            variety_name = variety_lookup.get(seed_id, "Unknown Variety")
-            
-            st.write("---")
-            st.write(f"**Variety:** {variety_name} | **Action:** {log.get('action')}")
-            st.write(f"*Notes:* {log.get('notes', 'N/A')}")
-            
-            if st.button("🗑️ Delete", key=f"del_{log_id}"):
-                supabase.table("field_logs").delete().eq("log_id", log_id).execute()
-                st.rerun()
+        # Searchable Log Form
+        search_log = st.text_input("🔍 Filter plants for log...", key="log_search")
+        filtered_plants = df[df['display_name'].str.contains(search_log, case=False, na=False)] if search_
