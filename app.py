@@ -110,7 +110,8 @@ with tab2:
         st.divider()
         st.write("### 📜 My Recent Logs")
         
-        logs = supabase.table("field_logs").select("*").eq("user_id", st.session_state["user"].id).order("timestamp", desc=True).execute()
+        # Remove the .eq("user_id", ...) filter just to see if logs appear
+logs = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
         
         for log in logs.data:
             # Safely get the ID; skip this log if it has no ID
