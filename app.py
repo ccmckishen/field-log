@@ -29,7 +29,7 @@ if "user" not in st.session_state:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Login failed: {e}")
-        else: # Sign Up Mode
+        else:
             if st.button("Create Account"):
                 try:
                     supabase.auth.sign_up({"email": email, "password": password})
@@ -47,7 +47,6 @@ else:
 # --- 3. DATA FUNCTIONS ---
 @st.cache_data(ttl=60)
 def load_library():
-    # Ensure RLS policy allows SELECT on 'seeds'
     response = supabase.table("seeds").select("*").execute()
     df = pd.DataFrame(response.data)
     expected_cols = ['genus', 'species', 'botanical_subspecies', 'common_name', 'variety']
@@ -99,22 +98,13 @@ with tab2:
 
         st.divider()
         st.write("### 📜 My Recent Logs")
-        
-        # DEBUG VERSION: Remove .eq(...) filter to see if anything loads
         response = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
+        st.write(f"DEBUG: Found {len(response.data)} logs.")
         
-        st.write(f"DEBUG: Found {len(response.data)} logs in the database.")
-        
+        # ABSOLUTE VISIBILITY LOOP
         for log in response.data:
-            log_id = log.get('id')
-            if not log_id: continue
-            
-            c1, c2 = st.columns([0.8, 0.2])
-            raw_ts = log.get('timestamp', 'No Date')
-            display_date = raw_ts[:10] if isinstance(raw_ts, str) else "Unknown Date"
-            
-            c1.write(f"**Action:** {log.get('action', 'N/A')} | **Date:** {display_date}")
-            
-            if c2.button("🗑️", key=f"del_{log_id}"):
-                delete_log(log_id)
+            st.write("---")
+            st.write(f"**ID:** {log.get('id')} | **Action:** {log.get('action')} | **Notes:** {log.get('notes')}")
+            if st.button("🗑️ Delete", key=f"del_{log.get('id')}"):
+                delete_log(log.get('id'))
                 st.rerun()
