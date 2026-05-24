@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
+import datetime
 
 # --- 1. CONFIGURATION & SUPABASE SETUP ---
 st.set_page_config(page_title="Franklinville Field Log", page_icon="☁️", layout="centered")
@@ -71,7 +72,7 @@ df = load_library()
 
 # --- 4. APP UI ---
 st.title("☁️ Cloud Field App")
-tab1, tab2 = st.tabs(["🗂️ Library", "📝 Field Log"])
+tab1, tab2, tab3 = st.tabs(["🗂️ Library", "📝 Field Log", "📊 Insights"])
 
 with tab1:
     st.write(f"Active Collection: **{len(df)}** varieties")
@@ -87,8 +88,6 @@ with tab2:
         st.warning("Please log in to record or view your logs.")
     else:
         st.write("### 📝 Record an Action")
-        
-        # 1. Search Bar
         search_term = st.text_input("🔍 Filter by Name (Common or Scientific)...")
         search_df = df
         if search_term:
@@ -97,48 +96,33 @@ with tab2:
                     df['species'].str.contains(search_term, case=False, na=False))
             search_df = df[mask]
         
-        # 2. Cascading Selectors (Sorted)
         selected_common = st.selectbox("1. Common Name:", ["-- All --"] + sorted(search_df['common_name'].unique().tolist()))
-        
         common_df = search_df if selected_common == "-- All --" else search_df[search_df['common_name'] == selected_common]
         selected_genus = st.selectbox("2. Genus:", ["-- All --"] + sorted(common_df['genus'].unique().tolist()))
-        
         genus_df = common_df if selected_genus == "-- All --" else common_df[common_df['genus'] == selected_genus]
         selected_species = st.selectbox("3. Species:", ["-- All --"] + sorted(genus_df['species'].unique().tolist()))
-            
         final_df = genus_df if selected_species == "-- All --" else genus_df[genus_df['species'] == selected_species]
-        
-        # Sort final list alphabetically
         plant_dict = dict(sorted(zip(final_df['display_name'], final_df['seed_id'])))
         
         with st.form("log_form", clear_on_submit=True):
             selected_plant = st.selectbox("4. Final Selection:", ["-- Choose --"] + list(plant_dict.keys()))
             action = st.selectbox("5. Action?", ["Started Indoors", "Direct Sowed", "Harvested", "General Observation"])
             notes = st.text_area("6. Notes")
-            
             if st.form_submit_button("☁️ Save to Cloud"):
-                if selected_plant == "-- Choose --": 
-                    st.error("Select a plant!")
+                if selected_plant == "-- Choose --": st.error("Select a plant!")
                 else:
                     save_log(plant_dict[selected_plant], action, notes)
                     st.success("Logged successfully!")
                     st.rerun()
 
-        st.divider()
-        st.write("### 📜 My Recent Logs")
-        response = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
-        
-        variety_lookup = dict(zip(df['seed_id'], df['variety']))
-        
-        for log in response.data:
-            current_id = log.get('log_id')
-            seed_id = log.get('seed_id')
-            variety_name = variety_lookup.get(seed_id, "Unknown Variety")
-            
-            st.write("---")
-            st.write(f"**Variety:** {variety_name} | **Action:** {log.get('action')}")
-            st.write(f"*Notes:* {log.get('notes', 'N/A')}")
-            
-            if st.button("🗑️ Delete", key=f"del_{current_id}"):
-                supabase.table("field_logs").delete().eq("log_id", current_id).execute()
-                st.rerun()
+with tab3:
+    st.write("### 📈 Gardening Analytics")
+    response = supabase.table("field_logs").select("*").execute()
+    if not response.data:
+        st.info("No logs found yet.")
+    else:
+        log_df = pd.DataFrame(response.data)
+        # Bar chart of actions
+        st.write("#### Actions Frequency")
+        action_counts = log_df['action'].value_counts()
+        st.bar_chart(action_counts)
