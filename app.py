@@ -49,24 +49,16 @@ else:
 def load_library():
     response = supabase.table("seeds").select("*").execute()
     df = pd.DataFrame(response.data)
-    
     expected_cols = ['genus', 'species', 'botanical_subspecies', 'common_name', 'variety']
     for col in expected_cols:
-        if col not in df.columns:
-            df[col] = "" 
-            
+        if col not in df.columns: df[col] = "" 
     df = df.sort_values(by=expected_cols, ascending=True, na_position='first')
     df['display_name'] = df['common_name'] + " - " + df['variety'] + " (" + df['genus'] + " " + df['species'] + ")"
     return df
 
 def save_log(seed_id, action, notes):
     user = st.session_state.get("user")
-    data = {
-        "seed_id": seed_id,
-        "action": action,
-        "notes": notes,
-        "user_id": user.id if user else None
-    }
+    data = {"seed_id": seed_id, "action": action, "notes": notes, "user_id": user.id if user else None}
     supabase.table("field_logs").insert(data).execute()
 
 def delete_log(log_id):
@@ -82,7 +74,6 @@ with tab1:
     st.write(f"Active Collection: **{len(df)}** varieties")
     search_term = st.text_input("🔍 Quick Search...")
     filtered_df = df[df['common_name'].str.contains(search_term, case=False, na=False) | df['variety'].str.contains(search_term, case=False, na=False)] if search_term else df
-
     for index, row in filtered_df.iterrows():
         with st.expander(f"🌿 {row['common_name']} - {row['variety']}"):
             st.caption(f"Botanical: *{row['genus']} {row['species']}*")
@@ -92,7 +83,6 @@ with tab2:
     if "user" not in st.session_state:
         st.warning("Please log in to record or view your logs.")
     else:
-        # A. FORM TO RECORD LOGS
         st.write("### 📝 Record an Action")
         plant_dict = dict(zip(df['display_name'], df['seed_id']))
         with st.form("log_form", clear_on_submit=True):
@@ -106,26 +96,22 @@ with tab2:
                     st.success("Logged successfully!")
                     st.rerun()
 
-       # B. LIST EXISTING LOGS (Final Safe Version)
         st.divider()
         st.write("### 📜 My Recent Logs")
         
-        # Remove the .eq("user_id", ...) filter just to see if logs appear
-logs = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()        
+        # TEMPORARY FIX: Removed the .eq("user_id", ...) filter to see all logs
+        logs = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
+        
         for log in logs.data:
-            # Safely get the ID; skip this log if it has no ID
             log_id = log.get('id')
-            if not log_id:
-                continue
-                
-            c1, c2 = st.columns([0.8, 0.2])
+            if not log_id: continue
             
+            c1, c2 = st.columns([0.8, 0.2])
             raw_ts = log.get('timestamp', 'No Date')
             display_date = raw_ts[:10] if isinstance(raw_ts, str) else "Unknown Date"
             
             c1.write(f"**Action:** {log.get('action', 'N/A')} | **Date:** {display_date}")
             
-            # Use the safely retrieved log_id for the button key
             if c2.button("🗑️", key=f"del_{log_id}"):
                 delete_log(log_id)
                 st.rerun()
