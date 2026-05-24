@@ -88,21 +88,7 @@ with tab2:
     else:
         st.write("### 📝 Record an Action")
         
-        # Combined Lookup: Common Name first, then narrowing down by Genus/Species
+        # Combined Lookup: Filter by Common/Scientific name first
         lookup_term = st.text_input("🔍 Search by Name (Common or Scientific)...")
         
-        # Apply name filter
         filtered_df = df
-        if lookup_term:
-            mask = (df['common_name'].str.contains(lookup_term, case=False, na=False) | 
-                    df['genus'].str.contains(lookup_term, case=False, na=False) | 
-                    df['species'].str.contains(lookup_term, case=False, na=False))
-            filtered_df = df[mask]
-        
-        # Cascading Selectors based on the filtered_df
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            selected_common = st.selectbox("1. Common Name:", ["-- All --"] + sorted(filtered_df['common_name'].unique().tolist()))
-        with c2:
-            genus_df = filtered_df if selected_common == "-- All --" else filtered_df[filtered_df['common_name'] == selected_common]
-            selected_genus = st.selectbox("2. Gen
