@@ -13,7 +13,7 @@ st.set_page_config(page_title="Franklinville Field Log", page_icon="☁️", lay
 # 2. Database Connections (Now powered by Supabase!)
 @st.cache_data(ttl=60) # Checks the cloud for updates every 60 seconds
 def load_library():
-    conn = psycopg2.connect(CONNECTION_STRING, connect_timeout=10)
+    conn = psycopg2.connect(CONNECTION_STRING, connect_timeout=10, sslmode='require')
     # Pull the seeds from the cloud
     df = pd.read_sql_query("SELECT seed_id, common_name, variety, genus, species, botanical_subspecies, maturity_days, sowing_instructions, frost_tolerant, source_company FROM seeds", conn)
     conn.close()
