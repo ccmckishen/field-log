@@ -97,7 +97,7 @@ with tab2:
                     df['species'].str.contains(search_term, case=False, na=False))
             search_df = df[mask]
         
-        # 2. Cascading Selectors (on top of Search Results)
+        # 2. Cascading Selectors (Sorted alphabetically)
         selected_common = st.selectbox("1. Common Name:", ["-- All --"] + sorted(search_df['common_name'].unique().tolist()))
         
         common_df = search_df if selected_common == "-- All --" else search_df[search_df['common_name'] == selected_common]
@@ -107,7 +107,9 @@ with tab2:
         selected_species = st.selectbox("3. Species:", ["-- All --"] + sorted(genus_df['species'].unique().tolist()))
             
         final_df = genus_df if selected_species == "-- All --" else genus_df[genus_df['species'] == selected_species]
-        plant_dict = dict(zip(final_df['display_name'], final_df['seed_id']))
+        
+        # Sort the final dictionary keys alphabetically
+        plant_dict = dict(sorted(zip(final_df['display_name'], final_df['seed_id'])))
         
         with st.form("log_form", clear_on_submit=True):
             selected_plant = st.selectbox("4. Final Selection:", ["-- Choose --"] + list(plant_dict.keys()))
@@ -126,17 +128,4 @@ with tab2:
         st.write("### 📜 My Recent Logs")
         response = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
         
-        variety_lookup = dict(zip(df['seed_id'], df['variety']))
-        
-        for log in response.data:
-            current_id = log.get('log_id')
-            seed_id = log.get('seed_id')
-            variety_name = variety_lookup.get(seed_id, "Unknown Variety")
-            
-            st.write("---")
-            st.write(f"**Variety:** {variety_name} | **Action:** {log.get('action')}")
-            st.write(f"*Notes:* {log.get('notes', 'N/A')}")
-            
-            if st.button("🗑️ Delete", key=f"del_{current_id}"):
-                supabase.table("field_logs").delete().eq("log_id", current_id).execute()
-                st.rerun()
+        variety_lookup = dict(zip
