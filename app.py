@@ -88,49 +88,21 @@ with tab2:
     else:
         st.write("### 📝 Record an Action")
         
-        # Cascading Filter Logic
-        all_genera = sorted(df['genus'].unique().tolist())
-        selected_genus = st.selectbox("1. Genus:", ["-- All --"] + all_genera)
+        # Combined Lookup: Common Name first, then narrowing down by Genus/Species
+        lookup_term = st.text_input("🔍 Search by Name (Common or Scientific)...")
         
-        genus_df = df if selected_genus == "-- All --" else df[df['genus'] == selected_genus]
-        all_species = sorted(genus_df['species'].unique().tolist())
-        selected_species = st.selectbox("2. Species:", ["-- All --"] + all_species)
+        # Apply name filter
+        filtered_df = df
+        if lookup_term:
+            mask = (df['common_name'].str.contains(lookup_term, case=False, na=False) | 
+                    df['genus'].str.contains(lookup_term, case=False, na=False) | 
+                    df['species'].str.contains(lookup_term, case=False, na=False))
+            filtered_df = df[mask]
         
-        species_df = genus_df if selected_species == "-- All --" else genus_df[genus_df['species'] == selected_species]
-        all_common = sorted(species_df['common_name'].unique().tolist())
-        selected_common = st.selectbox("3. Common Name:", ["-- All --"] + all_common)
-            
-        final_df = species_df if selected_common == "-- All --" else species_df[species_df['common_name'] == selected_common]
-        plant_dict = dict(zip(final_df['display_name'], final_df['seed_id']))
-        
-        with st.form("log_form", clear_on_submit=True):
-            selected_plant = st.selectbox("4. Select Variety:", ["-- Choose --"] + list(plant_dict.keys()))
-            action = st.selectbox("5. Action?", ["Started Indoors", "Direct Sowed", "Harvested", "General Observation"])
-            notes = st.text_area("6. Notes")
-            
-            if st.form_submit_button("☁️ Save to Cloud"):
-                if selected_plant == "-- Choose --": 
-                    st.error("Select a plant!")
-                else:
-                    save_log(plant_dict[selected_plant], action, notes)
-                    st.success("Logged successfully!")
-                    st.rerun()
-
-        st.divider()
-        st.write("### 📜 My Recent Logs")
-        response = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
-        
-        variety_lookup = dict(zip(df['seed_id'], df['variety']))
-        
-        for log in response.data:
-            current_id = log.get('log_id')
-            seed_id = log.get('seed_id')
-            variety_name = variety_lookup.get(seed_id, "Unknown Variety")
-            
-            st.write("---")
-            st.write(f"**Variety:** {variety_name} | **Action:** {log.get('action')}")
-            st.write(f"*Notes:* {log.get('notes', 'N/A')}")
-            
-            if st.button("🗑️ Delete", key=f"del_{current_id}"):
-                supabase.table("field_logs").delete().eq("log_id", current_id).execute()
-                st.rerun()
+        # Cascading Selectors based on the filtered_df
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            selected_common = st.selectbox("1. Common Name:", ["-- All --"] + sorted(filtered_df['common_name'].unique().tolist()))
+        with c2:
+            genus_df = filtered_df if selected_common == "-- All --" else filtered_df[filtered_df['common_name'] == selected_common]
+            selected_genus = st.selectbox("2. Gen
