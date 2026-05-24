@@ -14,7 +14,6 @@ def init_supabase():
 supabase = init_supabase()
 
 # --- 2. AUTHENTICATION (Sidebar) ---
-# Persistent Session Check: Look for an existing session in browser storage
 if "user" not in st.session_state:
     session = supabase.auth.get_session()
     if session:
@@ -98,4 +97,40 @@ with tab2:
         selected_species = st.selectbox("2. Species:", ["-- All --"] + all_species)
         
         species_df = genus_df if selected_species == "-- All --" else genus_df[genus_df['species'] == selected_species]
-        all_common = sorted(species
+        all_common = sorted(species_df['common_name'].unique().tolist())
+        selected_common = st.selectbox("3. Common Name:", ["-- All --"] + all_common)
+            
+        final_df = species_df if selected_common == "-- All --" else species_df[species_df['common_name'] == selected_common]
+        plant_dict = dict(zip(final_df['display_name'], final_df['seed_id']))
+        
+        with st.form("log_form", clear_on_submit=True):
+            selected_plant = st.selectbox("4. Select Variety:", ["-- Choose --"] + list(plant_dict.keys()))
+            action = st.selectbox("5. Action?", ["Started Indoors", "Direct Sowed", "Harvested", "General Observation"])
+            notes = st.text_area("6. Notes")
+            
+            if st.form_submit_button("☁️ Save to Cloud"):
+                if selected_plant == "-- Choose --": 
+                    st.error("Select a plant!")
+                else:
+                    save_log(plant_dict[selected_plant], action, notes)
+                    st.success("Logged successfully!")
+                    st.rerun()
+
+        st.divider()
+        st.write("### 📜 My Recent Logs")
+        response = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
+        
+        variety_lookup = dict(zip(df['seed_id'], df['variety']))
+        
+        for log in response.data:
+            current_id = log.get('log_id')
+            seed_id = log.get('seed_id')
+            variety_name = variety_lookup.get(seed_id, "Unknown Variety")
+            
+            st.write("---")
+            st.write(f"**Variety:** {variety_name} | **Action:** {log.get('action')}")
+            st.write(f"*Notes:* {log.get('notes', 'N/A')}")
+            
+            if st.button("🗑️ Delete", key=f"del_{current_id}"):
+                supabase.table("field_logs").delete().eq("log_id", current_id).execute()
+                st.rerun()
