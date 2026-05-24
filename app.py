@@ -5,7 +5,18 @@ import pandas as pd
 # --- CLOUD DATABASE CONNECTION ---
 # ⚠️ PASTE YOUR SUPABASE URI STRING HERE (Keep the quotation marks!) ⚠️
 # Pull the secure connection string from Streamlit's secret vault
-CONNECTION_STRING = st.secrets["SUPABASE_URI"]
+import streamlit as st
+from supabase import create_client, Client
+
+# Initialize the new Supabase Client
+@st.cache_resource
+def get_supabase_client():
+    # We are now using the URL and KEY, not the URI
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+supabase = get_supabase_client()
 
 # 1. Page Configuration
 st.set_page_config(page_title="Franklinville Field Log", page_icon="☁️", layout="centered")
