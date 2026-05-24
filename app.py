@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
 import datetime
+import altair as alt
 
 # --- 1. CONFIGURATION & SUPABASE SETUP ---
 st.set_page_config(page_title="Franklinville Field Log", page_icon="☁️", layout="centered")
@@ -46,7 +47,7 @@ else:
     with st.sidebar:
         st.success(f"Logged in: {st.session_state['user'].email}")
         if st.button("Log Out"):
-            supabase.auth.out()
+            supabase.auth.sign_out()
             if "user" in st.session_state:
                 del st.session_state["user"]
             st.rerun()
@@ -107,18 +108,9 @@ with tab2:
         with st.form("log_form", clear_on_submit=True):
             selected_plant = st.selectbox("4. Final Selection:", ["-- Choose --"] + list(plant_dict.keys()))
             action = st.selectbox("5. Action?", [
-                "Soil Amendment",
-                "Started Indoors", 
-                "Direct Sowed", 
-                "Transplanted", 
-                "Fertilized", 
-                "Watering",
-                "Pruned/Trained", 
-                "Pest/Disease Discovery", 
-                "Weather Event", 
-                "Harvested", 
-                "Failed/Lost",
-                "General Observation"
+                "Soil Amendment", "Started Indoors", "Direct Sowed", "Transplanted", 
+                "Fertilized", "Watering", "Pruned/Trained", "Pest/Disease Discovery", 
+                "Weather Event", "Harvested", "Failed/Lost", "General Observation"
             ])
             notes = st.text_area("6. Notes")
             if st.form_submit_button("☁️ Save to Cloud"):
@@ -151,6 +143,16 @@ with tab3:
         st.info("No logs found yet.")
     else:
         log_df = pd.DataFrame(response.data)
-        st.write("#### Actions Frequency")
-        action_counts = log_df['action'].value_counts()
-        st.bar_chart(action_counts)
+        
+        # Prepare data for chart
+        counts = log_df['action'].value_counts().reset_index()
+        counts.columns = ['Action', 'Count']
+        
+        # Create a professional-looking chart
+        chart = alt.Chart(counts).mark_bar(color='#2E8B57').encode(
+            x=alt.X('Action', sort='-y', title='Activity'),
+            y=alt.Y('Count', title='Frequency'),
+            tooltip=['Action', 'Count']
+        ).properties(title="Gardening Activity Frequency")
+        
+        st.altair_chart(chart, use_container_width=True)
