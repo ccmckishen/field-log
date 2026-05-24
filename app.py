@@ -82,8 +82,8 @@ with tab2:
     else:
         st.write("### 📝 Record an Action")
         
-        # Cascading Filters
-        col1, col2 = st.columns(2)
-        with col1:
-            all_genera = sorted(df['genus'].unique().tolist())
-            selected_genus
+        # Cascading Filter Logic
+        all_genera = sorted(df['genus'].unique().tolist())
+        selected_genus = st.selectbox("1. Genus:", ["-- All --"] + all_genera)
+        
+        genus_df = df if selected_genus == "-- All --" else df[df['genus']
