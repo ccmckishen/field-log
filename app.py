@@ -18,13 +18,7 @@ supabase = init_supabase()
 
 # --- WEATHER DATA FETCHING (Open-Meteo) ---
 LAT, LON = "41.109", "-74.585"
-
-# WMO Weather Interpretation Codes
-WMO_CODES = {
-    0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
-    45: "Fog", 48: "Depositing rime fog", 51: "Light drizzle", 53: "Moderate drizzle",
-    55: "Dense drizzle", 61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain"
-}
+WMO_CODES = {0: "Clear", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast", 45: "Fog", 61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain"}
 
 def fetch_weather():
     try:
@@ -36,57 +30,83 @@ def fetch_weather():
             "rain": res['current']['precipitation'],
             "conditions": WMO_CODES.get(code, f"Code: {code}")
         }
-    except Exception as e:
+    except Exception:
         return None
 
-# --- 2. AUTHENTICATION ---
+# --- 2. AUTHENTICATION & DATA LOADING ---
 if "user" not in st.session_state:
     session = supabase.auth.get_session()
     if session: st.session_state["user"] = session.user
+
+@st.cache_data(ttl=60)
+def load_library():
+    try:
+        response = supabase.table("seeds").select("seed_id, genus, species, common_name, variety, sowing_instructions").execute()
+        df = pd.DataFrame(response.data)
+        df['display_name'] = df['common_name'] + " - " + df['variety'] + " (" + df['genus'] + " " + df['species'] + ")"
+        return df
+    except Exception as e:
+        st.error(f"Error loading library: {e}")
+        return pd.DataFrame()
+
+df = load_library()
 
 # --- 3. APP UI ---
 st.title("☁️ Cloud Field App")
 tab1, tab2, tab3, tab4 = st.tabs(["🗂️ Library", "📝 Field Log", "📊 Insights", "🌤️ Weather History"])
 
 with tab1:
-    # (Keep your existing Library logic here)
-    st.write("Library Tab Active")
+    st.write(f"Active Collection: {len(df) if not df.empty else 0} varieties")
+    search_term = st.text_input("🔍 Search Library...")
+    if not df.empty:
+        filtered = df[df['common_name'].str.contains(search_term, case=False, na=False) | df['variety'].str.contains(search_term, case=False, na=False)] if search_term else df
+        for _, row in filtered.iterrows():
+            with st.expander(f"🌿 {row['common_name']} - {row['variety']}"):
+                st.write(f"Botanical: *{row['genus']} {row['species']}*")
+                st.info(row.get('sowing_instructions', 'No instructions.'))
 
 with tab2:
     if "user" not in st.session_state:
         st.warning("Please log in.")
     else:
-        # (Keep your Field Log form logic here)
-        st.write("Field Log Tab Active")
+        # Cascading Selectors
+        common = st.selectbox("1. Common Name:", ["-- All --"] + sorted(df['common_name'].unique().tolist()))
+        genus_df = df if common == "-- All --" else df[df['common_name'] == common]
+        genus = st.selectbox("2. Genus:", ["-- All --"] + sorted(genus_df['genus'].unique().tolist()))
+        spec_df = genus_df if genus == "-- All --" else genus_df[genus_df['genus'] == genus]
+        species = st.selectbox("3. Species:", ["-- All --"] + sorted(spec_df['species'].unique().tolist()))
+        final_df = spec_df if species == "-- All --" else spec_df[spec_df['species'] == species]
+        
+        plant_dict = dict(sorted(zip(final_df['display_name'], final_df['seed_id'])))
+        
+        with st.form("log_form", clear_on_submit=True):
+            selected_plant = st.selectbox("4. Plant:", ["-- Choose --"] + list(plant_dict.keys()))
+            action = st.selectbox("5. Action?", ["Soil Amendment", "Started Indoors", "Direct Sowed", "Transplanted", "Fertilized", "Watering", "Pruned/Trained", "Pest Discovery", "Weather Event", "Harvested", "Failed/Lost", "General Observation"])
+            notes = st.text_area("6. Notes")
+            if st.form_submit_button("☁️ Save to Cloud"):
+                if selected_plant != "-- Choose --":
+                    supabase.table("field_logs").insert({"seed_id": plant_dict[selected_plant], "action": action, "notes": notes, "user_id": st.session_state["user"].id}).execute()
+                    st.success("Logged!")
+                    st.rerun()
 
 with tab3:
-    st.write("### 📈 My Personal Gardening Analytics")
-    # (Keep your Insights chart logic here)
+    st.write("### 📈 Analytics")
+    if "user" in st.session_state:
+        logs = supabase.table("field_logs").select("*").eq("user_id", st.session_state["user"].id).execute()
+        if logs.data:
+            log_df = pd.DataFrame(logs.data)
+            chart = alt.Chart(log_df['action'].value_counts().reset_index()).mark_bar(color='#2E8B57').encode(x='action', y='count')
+            st.altair_chart(chart, use_container_width=True)
 
 with tab4:
     st.write("### 🌤️ Daily Weather Log")
     if "user" in st.session_state:
         today = datetime.date.today().isoformat()
-        
-        # Automatic Lazy Log
         exists = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).eq("date", today).execute()
         if not exists.data:
             weather = fetch_weather()
             if weather:
-                supabase.table("weather_logs").insert({
-                    "user_id": st.session_state["user"].id,
-                    "date": today,
-                    "temperature": weather['temp'],
-                    "conditions": weather['conditions'],
-                    "precipitation": weather['rain']
-                }).execute()
+                supabase.table("weather_logs").insert({"user_id": st.session_state["user"].id, "date": today, "temperature": weather['temp'], "conditions": weather['conditions'], "precipitation": weather['rain']}).execute()
                 st.rerun()
-
-        # Display History
         hist = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
-        if hist.data:
-            df_weather = pd.DataFrame(hist.data)
-            st.dataframe(df_weather[['date', 'temperature', 'conditions', 'precipitation']], use_container_width=True)
-            st.altair_chart(alt.Chart(df_weather).mark_line(point=True).encode(x='date', y='temperature', tooltip=['date', 'temperature', 'conditions']), use_container_width=True)
-    else:
-        st.warning("Please log in to view weather history.")
+        if hist.data: st.dataframe(pd.DataFrame(hist.data))
