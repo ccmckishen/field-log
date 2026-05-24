@@ -46,7 +46,7 @@ else:
     with st.sidebar:
         st.success(f"Logged in: {st.session_state['user'].email}")
         if st.button("Log Out"):
-            supabase.auth.sign_out()
+            supabase.auth.out()
             if "user" in st.session_state:
                 del st.session_state["user"]
             st.rerun()
@@ -106,7 +106,20 @@ with tab2:
         
         with st.form("log_form", clear_on_submit=True):
             selected_plant = st.selectbox("4. Final Selection:", ["-- Choose --"] + list(plant_dict.keys()))
-            action = st.selectbox("5. Action?", ["Started Indoors", "Direct Sowed", "Harvested", "General Observation"])
+            action = st.selectbox("5. Action?", [
+                "Soil Amendment",
+                "Started Indoors", 
+                "Direct Sowed", 
+                "Transplanted", 
+                "Fertilized", 
+                "Watering",
+                "Pruned/Trained", 
+                "Pest/Disease Discovery", 
+                "Weather Event", 
+                "Harvested", 
+                "Failed/Lost",
+                "General Observation"
+            ])
             notes = st.text_area("6. Notes")
             if st.form_submit_button("☁️ Save to Cloud"):
                 if selected_plant == "-- Choose --": st.error("Select a plant!")
