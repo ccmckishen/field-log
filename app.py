@@ -77,4 +77,36 @@ with tab1:
     for index, row in filtered_df.iterrows():
         with st.expander(f"🌿 {row['common_name']} - {row['variety']}"):
             st.caption(f"Botanical: *{row['genus']} {row['species']}*")
-            st.info(row.get('sowing_instructions', 'No
+            # Fixed the string literal error here
+            st.info(row.get('sowing_instructions', 'No instructions logged.'))
+
+with tab2:
+    if "user" not in st.session_state:
+        st.warning("Please log in to record or view your logs.")
+    else:
+        st.write("### 📝 Record an Action")
+        plant_dict = dict(zip(df['display_name'], df['seed_id']))
+        with st.form("log_form", clear_on_submit=True):
+            selected_plant = st.selectbox("1. Which plant?", ["-- Choose --"] + list(plant_dict.keys()))
+            action = st.selectbox("2. Action?", ["Started Indoors", "Direct Sowed", "Harvested", "General Observation"])
+            notes = st.text_area("3. Notes")
+            if st.form_submit_button("☁️ Save to Cloud"):
+                if selected_plant == "-- Choose --": st.error("Select a plant!")
+                else:
+                    save_log(plant_dict[selected_plant], action, notes)
+                    st.success("Logged successfully!")
+                    st.rerun()
+
+        st.divider()
+        st.write("### 📜 My Recent Logs")
+        response = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
+        st.write(f"DEBUG: Found {len(response.data)} logs.")
+        
+        for log in response.data:
+            current_id = log.get('log_id')
+            st.write("---")
+            st.write(f"**ID:** {current_id} | **Action:** {log.get('action')} | **Notes:** {log.get('notes')}")
+            
+            if st.button("🗑️ Delete", key=f"del_{current_id}"):
+                supabase.table("field_logs").delete().eq("log_id", current_id).execute()
+                st.rerun()
