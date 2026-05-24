@@ -86,4 +86,33 @@ with tab2:
         all_genera = sorted(df['genus'].unique().tolist())
         selected_genus = st.selectbox("1. Genus:", ["-- All --"] + all_genera)
         
-        genus_df = df if selected_genus == "-- All --" else df[df['genus']
+        genus_df = df if selected_genus == "-- All --" else df[df['genus'] == selected_genus]
+        all_species = sorted(genus_df['species'].unique().tolist())
+        selected_species = st.selectbox("2. Species:", ["-- All --"] + all_species)
+            
+        final_df = genus_df if selected_species == "-- All --" else genus_df[genus_df['species'] == selected_species]
+        plant_dict = dict(zip(final_df['display_name'], final_df['seed_id']))
+        
+        with st.form("log_form", clear_on_submit=True):
+            selected_plant = st.selectbox("3. Select Variety:", ["-- Choose --"] + list(plant_dict.keys()))
+            action = st.selectbox("4. Action?", ["Started Indoors", "Direct Sowed", "Harvested", "General Observation"])
+            notes = st.text_area("5. Notes")
+            
+            if st.form_submit_button("☁️ Save to Cloud"):
+                if selected_plant == "-- Choose --": 
+                    st.error("Select a plant!")
+                else:
+                    save_log(plant_dict[selected_plant], action, notes)
+                    st.success("Logged successfully!")
+                    st.rerun()
+
+        st.divider()
+        st.write("### 📜 My Recent Logs")
+        response = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
+        
+        variety_lookup = dict(zip(df['seed_id'], df['variety']))
+        
+        for log in response.data:
+            current_id = log.get('log_id')
+            seed_id = log.get('seed_id')
+            variety_name = variety_lookup.
