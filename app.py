@@ -106,23 +106,26 @@ with tab2:
                     st.success("Logged successfully!")
                     st.rerun()
 
-       # B. LIST EXISTING LOGS (Safe Version)
+       # B. LIST EXISTING LOGS (Final Safe Version)
         st.divider()
         st.write("### 📜 My Recent Logs")
         
-        # Simplified fetch: No join error, just the logs
         logs = supabase.table("field_logs").select("*").eq("user_id", st.session_state["user"].id).order("timestamp", desc=True).execute()
         
         for log in logs.data:
+            # Safely get the ID; skip this log if it has no ID
+            log_id = log.get('id')
+            if not log_id:
+                continue
+                
             c1, c2 = st.columns([0.8, 0.2])
             
-            # Safely handle the timestamp
             raw_ts = log.get('timestamp', 'No Date')
-            # If timestamp exists and is a string, slice it; otherwise, just show the text
             display_date = raw_ts[:10] if isinstance(raw_ts, str) else "Unknown Date"
             
             c1.write(f"**Action:** {log.get('action', 'N/A')} | **Date:** {display_date}")
             
-            if c2.button("🗑️", key=f"del_{log['id']}"):
-                delete_log(log['id'])
+            # Use the safely retrieved log_id for the button key
+            if c2.button("🗑️", key=f"del_{log_id}"):
+                delete_log(log_id)
                 st.rerun()
