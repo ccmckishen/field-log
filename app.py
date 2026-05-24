@@ -14,6 +14,12 @@ def init_supabase():
 supabase = init_supabase()
 
 # --- 2. AUTHENTICATION (Sidebar) ---
+# Persistent Session Check: Look for an existing session in browser storage
+if "user" not in st.session_state:
+    session = supabase.auth.get_session()
+    if session:
+        st.session_state["user"] = session.user
+
 if "user" not in st.session_state:
     with st.sidebar:
         st.header("Welcome")
@@ -41,7 +47,8 @@ else:
         st.success(f"Logged in: {st.session_state['user'].email}")
         if st.button("Log Out"):
             supabase.auth.sign_out()
-            del st.session_state["user"]
+            if "user" in st.session_state:
+                del st.session_state["user"]
             st.rerun()
 
 # --- 3. DATA FUNCTIONS ---
@@ -90,29 +97,5 @@ with tab2:
         all_species = sorted(genus_df['species'].unique().tolist())
         selected_species = st.selectbox("2. Species:", ["-- All --"] + all_species)
         
-        # New: Common Name Filter
         species_df = genus_df if selected_species == "-- All --" else genus_df[genus_df['species'] == selected_species]
-        all_common = sorted(species_df['common_name'].unique().tolist())
-        selected_common = st.selectbox("3. Common Name:", ["-- All --"] + all_common)
-            
-        final_df = species_df if selected_common == "-- All --" else species_df[species_df['common_name'] == selected_common]
-        plant_dict = dict(zip(final_df['display_name'], final_df['seed_id']))
-        
-        with st.form("log_form", clear_on_submit=True):
-            selected_plant = st.selectbox("4. Select Variety:", ["-- Choose --"] + list(plant_dict.keys()))
-            action = st.selectbox("5. Action?", ["Started Indoors", "Direct Sowed", "Harvested", "General Observation"])
-            notes = st.text_area("6. Notes")
-            
-            if st.form_submit_button("☁️ Save to Cloud"):
-                if selected_plant == "-- Choose --": 
-                    st.error("Select a plant!")
-                else:
-                    save_log(plant_dict[selected_plant], action, notes)
-                    st.success("Logged successfully!")
-                    st.rerun()
-
-        st.divider()
-        st.write("### 📜 My Recent Logs")
-        response = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
-        
-        variety
+        all_common = sorted(species
