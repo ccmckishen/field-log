@@ -29,27 +29,24 @@ if "user" not in st.session_state:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Login failed: {e}")
-        
         else: # Sign Up Mode
             if st.button("Create Account"):
                 try:
-                    # This creates the account in your Supabase Auth table
                     supabase.auth.sign_up({"email": email, "password": password})
-                    st.success("Account created! Please check your email if verification is enabled.")
+                    st.success("Account created! Please check your email.")
                 except Exception as e:
                     st.error(f"Sign up failed: {e}")
-
-else: # Already logged in
+else:
     with st.sidebar:
         st.success(f"Logged in: {st.session_state['user'].email}")
         if st.button("Log Out"):
             supabase.auth.sign_out()
             del st.session_state["user"]
             st.rerun()
+
 # --- 3. DATA FUNCTIONS ---
 @st.cache_data(ttl=60)
 def load_library():
-    # Fetch seeds (Public access)
     response = supabase.table("seeds").select("*").execute()
     df = pd.DataFrame(response.data)
     
@@ -63,18 +60,17 @@ def load_library():
     return df
 
 def save_log(seed_id, action, notes):
-    # Get the user ID from the active session
     user = st.session_state.get("user")
-    user_id = user.id if user else None
-    
     data = {
         "seed_id": seed_id,
         "action": action,
         "notes": notes,
-        "user_id": user_id
+        "user_id": user.id if user else None
     }
-    # Supabase uses RLS to enforce that only this user_id can insert
     supabase.table("field_logs").insert(data).execute()
+
+def delete_log(log_id):
+    supabase.table("field_logs").delete().eq("id", log_id).execute()
 
 df = load_library()
 
@@ -85,13 +81,7 @@ tab1, tab2 = st.tabs(["🗂️ Library", "📝 Field Log"])
 with tab1:
     st.write(f"Active Collection: **{len(df)}** varieties")
     search_term = st.text_input("🔍 Quick Search...")
-
-    if search_term:
-        mask = df['common_name'].str.contains(search_term, case=False, na=False) | \
-               df['variety'].str.contains(search_term, case=False, na=False)
-        filtered_df = df[mask]
-    else:
-        filtered_df = df
+    filtered_df = df[df['common_name'].str.contains(search_term, case=False, na=False) | df['variety'].str.contains(search_term, case=False, na=False)] if search_term else df
 
     for index, row in filtered_df.iterrows():
         with st.expander(f"🌿 {row['common_name']} - {row['variety']}"):
@@ -100,20 +90,31 @@ with tab1:
 
 with tab2:
     if "user" not in st.session_state:
-        st.warning("Please log in via the sidebar to record logs.")
+        st.warning("Please log in to record or view your logs.")
     else:
+        # A. FORM TO RECORD LOGS
         st.write("### 📝 Record an Action")
         plant_dict = dict(zip(df['display_name'], df['seed_id']))
-        
         with st.form("log_form", clear_on_submit=True):
             selected_plant = st.selectbox("1. Which plant?", ["-- Choose --"] + list(plant_dict.keys()))
             action = st.selectbox("2. Action?", ["Started Indoors", "Direct Sowed", "Harvested", "General Observation"])
             notes = st.text_area("3. Notes")
-            submitted = st.form_submit_button("☁️ Save to Cloud")
-            
-            if submitted:
-                if selected_plant == "-- Choose --":
-                    st.error("Select a plant!")
+            if st.form_submit_button("☁️ Save to Cloud"):
+                if selected_plant == "-- Choose --": st.error("Select a plant!")
                 else:
                     save_log(plant_dict[selected_plant], action, notes)
                     st.success("Logged successfully!")
+                    st.rerun()
+
+        # B. LIST EXISTING LOGS WITH DELETE BUTTONS
+        st.divider()
+        st.write("### 📜 My Recent Logs")
+        logs = supabase.table("field_logs").select("*, seeds(common_name, variety)").eq("user_id", st.session_state["user"].id).order("timestamp", desc=True).execute()
+        
+        for log in logs.data:
+            c1, c2 = st.columns([0.8, 0.2])
+            seed_name = f"{log['seeds']['common_name']} - {log['seeds']['variety']}"
+            c1.write(f"**{seed_name}**: {log['action']}")
+            if c2.button("🗑️", key=f"del_{log['id']}"):
+                delete_log(log['id'])
+                st.rerun()
