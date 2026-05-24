@@ -97,6 +97,12 @@ with tab3:
             st.altair_chart(alt.Chart(pd.DataFrame(logs.data)).mark_bar().encode(x='action', y='count()'), use_container_width=True)
 
 with tab4:
+    st.write("### Debugging Wind Data")
+    if st.button("Test Wind API Fetch"):
+        test_w = fetch_weather()
+        st.write("Current API Raw Data:", test_w)
+        test_h = fetch_weather_historical(datetime.date.today().isoformat())
+        st.write("Historical API Raw Data:", test_h)
     st.write("### 🌤️ Daily Weather Log")
     if "user" in st.session_state:
         # 1. Automatic "Lazy" Log for Today
