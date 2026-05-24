@@ -106,17 +106,23 @@ with tab2:
                     st.success("Logged successfully!")
                     st.rerun()
 
-        # B. LIST EXISTING LOGS (Simplified for testing)
+       # B. LIST EXISTING LOGS (Safe Version)
         st.divider()
         st.write("### 📜 My Recent Logs")
         
-        # We removed the ", seeds(common_name, variety)" part to see if it loads
+        # Simplified fetch: No join error, just the logs
         logs = supabase.table("field_logs").select("*").eq("user_id", st.session_state["user"].id).order("timestamp", desc=True).execute()
         
         for log in logs.data:
             c1, c2 = st.columns([0.8, 0.2])
-            # Just printing the action and seed_id for now
-            c1.write(f"**Seed ID {log['seed_id']}**: {log['action']} ({log['timestamp'][:10]})")
+            
+            # Safely handle the timestamp
+            raw_ts = log.get('timestamp', 'No Date')
+            # If timestamp exists and is a string, slice it; otherwise, just show the text
+            display_date = raw_ts[:10] if isinstance(raw_ts, str) else "Unknown Date"
+            
+            c1.write(f"**Action:** {log.get('action', 'N/A')} | **Date:** {display_date}")
+            
             if c2.button("🗑️", key=f"del_{log['id']}"):
                 delete_log(log['id'])
                 st.rerun()
