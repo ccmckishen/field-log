@@ -106,15 +106,17 @@ with tab2:
                     st.success("Logged successfully!")
                     st.rerun()
 
-        # B. LIST EXISTING LOGS WITH DELETE BUTTONS
+        # B. LIST EXISTING LOGS (Simplified for testing)
         st.divider()
         st.write("### 📜 My Recent Logs")
-        logs = supabase.table("field_logs").select("*, seeds(common_name, variety)").eq("user_id", st.session_state["user"].id).order("timestamp", desc=True).execute()
+        
+        # We removed the ", seeds(common_name, variety)" part to see if it loads
+        logs = supabase.table("field_logs").select("*").eq("user_id", st.session_state["user"].id).order("timestamp", desc=True).execute()
         
         for log in logs.data:
             c1, c2 = st.columns([0.8, 0.2])
-            seed_name = f"{log['seeds']['common_name']} - {log['seeds']['variety']}"
-            c1.write(f"**{seed_name}**: {log['action']}")
+            # Just printing the action and seed_id for now
+            c1.write(f"**Seed ID {log['seed_id']}**: {log['action']} ({log['timestamp'][:10]})")
             if c2.button("🗑️", key=f"del_{log['id']}"):
                 delete_log(log['id'])
                 st.rerun()
