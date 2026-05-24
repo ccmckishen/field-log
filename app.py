@@ -23,29 +23,26 @@ WMO_CODES = {0: "Clear", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast", 4
 def fetch_weather():
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&current=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph&timezone=America/New_York"
-        res = requests.get(url).json()
-        curr = res.get('current', {})
-        code = curr.get('weather_code', 0)
+        res = requests.get(url).json().get('current', {})
         return {
-            "temp": curr.get('temperature_2m', 0),
-            "rain": curr.get('precipitation', 0),
-            "conditions": WMO_CODES.get(code, f"Code: {code}"),
-            "wind_speed": curr.get('wind_speed_10m', 0),
-            "wind_dir": curr.get('wind_direction_10m', 0)
+            "temp": res.get('temperature_2m', 0),
+            "rain": res.get('precipitation', 0),
+            "conditions": WMO_CODES.get(res.get('weather_code', 0), "Clear"),
+            "wind_speed": res.get('wind_speed_10m', 0),
+            "wind_dir": res.get('wind_direction_10m', 0)
         }
     except Exception: return None
 
 def fetch_weather_historical(date_str):
     try:
         url = f"https://archive-api.open-meteo.com/v1/archive?latitude={LAT}&longitude={LON}&start_date={date_str}&end_date={date_str}&daily=temperature_2m_mean,precipitation_sum,weather_code,wind_speed_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph&timezone=America/New_York"
-        res = requests.get(url).json()
-        daily = res.get('daily', {})
+        res = requests.get(url).json().get('daily', {})
         return {
-            "temp": daily.get('temperature_2m_mean', [0])[0],
-            "rain": daily.get('precipitation_sum', [0])[0],
-            "conditions": WMO_CODES.get(daily.get('weather_code', [0])[0], "Clear"),
-            "wind_speed": daily.get('wind_speed_10m_max', [0])[0],
-            "wind_dir": daily.get('wind_direction_10m_dominant', [0])[0]
+            "temp": res.get('temperature_2m_mean', [0])[0],
+            "rain": res.get('precipitation_sum', [0])[0],
+            "conditions": WMO_CODES.get(res.get('weather_code', [0])[0], "Clear"),
+            "wind_speed": res.get('wind_speed_10m_max', [0])[0],
+            "wind_dir": res.get('wind_direction_10m_dominant', [0])[0]
         }
     except Exception: return None
 
