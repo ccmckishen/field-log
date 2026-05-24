@@ -14,28 +14,38 @@ def init_supabase():
 supabase = init_supabase()
 
 # --- 2. AUTHENTICATION (Sidebar) ---
-# This is required so Supabase knows who is performing the INSERT
 if "user" not in st.session_state:
     with st.sidebar:
-        st.header("Login")
+        st.header("Welcome")
+        auth_mode = st.radio("Access", ["Login", "Sign Up"], horizontal=True)
         email = st.text_input("Email")
         password = st.text_input("Password", type="password")
-        if st.button("Sign In"):
-            try:
-                auth_res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                st.session_state["user"] = auth_res.user
-                st.rerun()
-            except Exception as e:
-                st.error(f"Login failed: {e}")
-        st.info("Log in to record your garden logs.")
-else:
+
+        if auth_mode == "Login":
+            if st.button("Sign In"):
+                try:
+                    auth_res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    st.session_state["user"] = auth_res.user
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Login failed: {e}")
+        
+        else: # Sign Up Mode
+            if st.button("Create Account"):
+                try:
+                    # This creates the account in your Supabase Auth table
+                    supabase.auth.sign_up({"email": email, "password": password})
+                    st.success("Account created! Please check your email if verification is enabled.")
+                except Exception as e:
+                    st.error(f"Sign up failed: {e}")
+
+else: # Already logged in
     with st.sidebar:
         st.success(f"Logged in: {st.session_state['user'].email}")
         if st.button("Log Out"):
             supabase.auth.sign_out()
             del st.session_state["user"]
             st.rerun()
-
 # --- 3. DATA FUNCTIONS ---
 @st.cache_data(ttl=60)
 def load_library():
