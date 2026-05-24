@@ -33,7 +33,7 @@ def fetch_weather():
     except Exception:
         return None
 
-# --- 2. AUTHENTICATION & DATA LOADING ---
+# --- 2. AUTHENTICATION & LIBRARY ---
 if "user" not in st.session_state:
     session = supabase.auth.get_session()
     if session: st.session_state["user"] = session.user
@@ -45,8 +45,7 @@ def load_library():
         df = pd.DataFrame(response.data)
         df['display_name'] = df['common_name'] + " - " + df['variety'] + " (" + df['genus'] + " " + df['species'] + ")"
         return df
-    except Exception as e:
-        st.error(f"Error loading library: {e}")
+    except Exception:
         return pd.DataFrame()
 
 df = load_library()
@@ -56,7 +55,6 @@ st.title("☁️ Cloud Field App")
 tab1, tab2, tab3, tab4 = st.tabs(["🗂️ Library", "📝 Field Log", "📊 Insights", "🌤️ Weather History"])
 
 with tab1:
-    st.write(f"Active Collection: {len(df) if not df.empty else 0} varieties")
     search_term = st.text_input("🔍 Search Library...")
     if not df.empty:
         filtered = df[df['common_name'].str.contains(search_term, case=False, na=False) | df['variety'].str.contains(search_term, case=False, na=False)] if search_term else df
@@ -69,14 +67,12 @@ with tab2:
     if "user" not in st.session_state:
         st.warning("Please log in.")
     else:
-        # Cascading Selectors
         common = st.selectbox("1. Common Name:", ["-- All --"] + sorted(df['common_name'].unique().tolist()))
         genus_df = df if common == "-- All --" else df[df['common_name'] == common]
         genus = st.selectbox("2. Genus:", ["-- All --"] + sorted(genus_df['genus'].unique().tolist()))
         spec_df = genus_df if genus == "-- All --" else genus_df[genus_df['genus'] == genus]
         species = st.selectbox("3. Species:", ["-- All --"] + sorted(spec_df['species'].unique().tolist()))
         final_df = spec_df if species == "-- All --" else spec_df[spec_df['species'] == species]
-        
         plant_dict = dict(sorted(zip(final_df['display_name'], final_df['seed_id'])))
         
         with st.form("log_form", clear_on_submit=True):
@@ -85,7 +81,7 @@ with tab2:
             notes = st.text_area("6. Notes")
             if st.form_submit_button("☁️ Save to Cloud"):
                 if selected_plant != "-- Choose --":
-                    supabase.table("field_logs").insert({"seed_id": plant_dict[selected_plant], "action": action, "notes": notes, "user_id": st.session_state["user"].id}).execute()
+                    supabase.table("field_logs").insert({"seed_id": plant_dict[selected_plant], "action": action, "notes": notes, "user_id": str(st.session_state["user"].id)}).execute()
                     st.success("Logged!")
                     st.rerun()
 
@@ -103,10 +99,24 @@ with tab4:
     if "user" in st.session_state:
         today = datetime.date.today().isoformat()
         exists = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).eq("date", today).execute()
+        
         if not exists.data:
             weather = fetch_weather()
             if weather:
-                supabase.table("weather_logs").insert({"user_id": st.session_state["user"].id, "date": today, "temperature": weather['temp'], "conditions": weather['conditions'], "precipitation": weather['rain']}).execute()
-                st.rerun()
+                try:
+                    # Explicit casting here to avoid APIError
+                    insert_data = {
+                        "user_id": str(st.session_state["user"].id),
+                        "date": today,
+                        "temperature": float(weather['temp']),
+                        "conditions": str(weather['conditions']),
+                        "precipitation": float(weather['rain'])
+                    }
+                    supabase.table("weather_logs").insert(insert_data).execute()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to insert: {e}")
+
         hist = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
-        if hist.data: st.dataframe(pd.DataFrame(hist.data))
+        if hist.data: 
+            st.dataframe(pd.DataFrame(hist.data), use_container_width=True)
