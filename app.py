@@ -20,17 +20,24 @@ supabase = init_supabase()
 def fetch_current_weather():
     try:
         key = st.secrets["WEATHER_API_KEY"]
-        # Fetching for Franklin, NJ
-        url = f"https://api.openweathermap.org/data/2.5/weather?q=Franklin,NJ&appid={key}&units=imperial"
+        # Using a more specific city query with state code
+        url = f"https://api.openweathermap.org/data/2.5/weather?q=Franklin,NJ,US&appid={key}&units=imperial"
         res = requests.get(url).json()
         
+        # Debugging: Print to console to see what we actually got
+        print("API Response:", res)
+        
+        if 'main' not in res:
+            st.error(f"API Error: Response did not contain 'main'. Response: {res}")
+            return None
+            
         return {
             "temp": res['main']['temp'],
             "conditions": res['weather'][0]['description'],
             "rain": res.get('rain', {}).get('1h', 0)
         }
     except Exception as e:
-        st.error(f"Weather API Error: {e}")
+        st.error(f"Weather API Exception: {e}")
         return None
 
 # --- [AUTHENTICATION & DATA FUNCTIONS REMAIN AS PREVIOUS] ---
