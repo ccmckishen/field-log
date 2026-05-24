@@ -97,26 +97,34 @@ with tab3:
 with tab4:
     st.write("### 🌤️ Daily Weather Log")
     if "user" in st.session_state:
-        today = datetime.date.today().isoformat()
-        exists = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).eq("date", today).execute()
-        
-        if not exists.data:
-            weather = fetch_weather()
-            if weather:
-                try:
-                    # Explicit casting here to avoid APIError
-                    insert_data = {
-                        "user_id": str(st.session_state["user"].id),
-                        "date": today,
-                        "temperature": float(weather['temp']),
-                        "conditions": str(weather['conditions']),
-                        "precipitation": float(weather['rain'])
-                    }
-                    supabase.table("weather_logs").insert(insert_data).execute()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Failed to insert: {e}")
+        # --- NEW: BACK-FILL BUTTON ---
+        if st.button("🔄 Sync Historical Data (Jan 1, 2026 - Today)"):
+            start_date = datetime.date(2026, 1, 1)
+            end_date = datetime.date.today()
+            delta = end_date - start_date
+            
+            with st.spinner("Syncing data... this may take a moment."):
+                for i in range(delta.days + 1):
+                    day = start_date + datetime.timedelta(days=i)
+                    day_str = day.isoformat()
+                    
+                    # Check if exists
+                    check = supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", day_str).execute()
+                    if not check.data:
+                        # Fetch historical
+                        hist_weather = fetch_weather_historical(day_str) # See helper below
+                        if hist_weather:
+                            supabase.table("weather_logs").insert({
+                                "user_id": str(st.session_state["user"].id),
+                                "date": day_str,
+                                "temperature": float(hist_weather['temp']),
+                                "conditions": str(hist_weather['conditions']),
+                                "precipitation": float(hist_weather['rain'])
+                            }).execute()
+                st.success("History sync complete!")
+                st.rerun()
 
+        # Display History (Same as before)
         hist = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
-        if hist.data: 
+        if hist.data:
             st.dataframe(pd.DataFrame(hist.data), use_container_width=True)
