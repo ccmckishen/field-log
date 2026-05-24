@@ -47,6 +47,7 @@ else:
 # --- 3. DATA FUNCTIONS ---
 @st.cache_data(ttl=60)
 def load_library():
+    # Ensure RLS policy allows SELECT on 'seeds'
     response = supabase.table("seeds").select("*").execute()
     df = pd.DataFrame(response.data)
     expected_cols = ['genus', 'species', 'botanical_subspecies', 'common_name', 'variety']
@@ -99,10 +100,12 @@ with tab2:
         st.divider()
         st.write("### 📜 My Recent Logs")
         
-        # TEMPORARY FIX: Removed the .eq("user_id", ...) filter to see all logs
-        logs = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
+        # DEBUG VERSION: Remove .eq(...) filter to see if anything loads
+        response = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
         
-        for log in logs.data:
+        st.write(f"DEBUG: Found {len(response.data)} logs in the database.")
+        
+        for log in response.data:
             log_id = log.get('id')
             if not log_id: continue
             
