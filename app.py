@@ -115,6 +115,22 @@ with tab2:
                     st.success("Logged successfully!")
                     st.rerun()
 
+        st.divider()
+        st.write("### 📜 My Recent Logs")
+        response = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
+        variety_lookup = dict(zip(df['seed_id'], df['variety']))
+        
+        for log in response.data:
+            current_id = log.get('log_id')
+            seed_id = log.get('seed_id')
+            variety_name = variety_lookup.get(seed_id, "Unknown Variety")
+            st.write("---")
+            st.write(f"**Variety:** {variety_name} | **Action:** {log.get('action')}")
+            st.write(f"*Notes:* {log.get('notes', 'N/A')}")
+            if st.button("🗑️ Delete", key=f"del_{current_id}"):
+                supabase.table("field_logs").delete().eq("log_id", current_id).execute()
+                st.rerun()
+
 with tab3:
     st.write("### 📈 Gardening Analytics")
     response = supabase.table("field_logs").select("*").execute()
@@ -122,7 +138,6 @@ with tab3:
         st.info("No logs found yet.")
     else:
         log_df = pd.DataFrame(response.data)
-        # Bar chart of actions
         st.write("#### Actions Frequency")
         action_counts = log_df['action'].value_counts()
         st.bar_chart(action_counts)
