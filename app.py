@@ -5,7 +5,7 @@ import pandas as pd
 # --- CLOUD DATABASE CONNECTION ---
 # ⚠️ PASTE YOUR SUPABASE URI STRING HERE (Keep the quotation marks!) ⚠️
 # Pull the secure connection string from Streamlit's secret vault
-CONNECTION_STRING = st.secrets["postgresql://postgres:BadWittiesOnly@db.nrwhbswjpkmfzaolyxiy.supabase.co:5432/postgres"]
+CONNECTION_STRING = st.secrets["SUPABASE_URI"]
 
 # 1. Page Configuration
 st.set_page_config(page_title="Franklinville Field Log", page_icon="☁️", layout="centered")
