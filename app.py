@@ -111,8 +111,7 @@ with tab2:
         st.write("### 📜 My Recent Logs")
         
         # Remove the .eq("user_id", ...) filter just to see if logs appear
-logs = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()
-        
+logs = supabase.table("field_logs").select("*").order("timestamp", desc=True).execute()        
         for log in logs.data:
             # Safely get the ID; skip this log if it has no ID
             log_id = log.get('id')
