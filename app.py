@@ -85,16 +85,26 @@ with tab3:
 with tab4:
     st.write("### 🌤️ Daily Weather Log")
     if "user" in st.session_state:
-        # Sync logic
+        # Sync Button
         if st.button("🔄 Sync Historical Data"):
-            start = datetime.date(2026, 1, 1)
-            for i in range((datetime.date.today() - start).days + 1):
-                day = (start + datetime.timedelta(days=i)).isoformat()
-                if not supabase.table("weather_logs").select("date").eq("date", day).execute().data:
-                    hw = fetch_weather_historical(day)
-                    if hw:
-                        supabase.table("weather_logs").insert({"user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), "conditions": str(hw['conditions']), "precipitation": float(hw['rain'])}).execute()
+            # ... (keep your existing sync logic here) ...
             st.rerun()
 
-        hist = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
-        if hist.data: st.dataframe(pd.DataFrame(hist.data), use_container_width=True)
+        # Fetch and Format History
+        hist = supabase.table("weather_logs").select("date, temperature, conditions, precipitation").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
+        
+        if hist.data:
+            df_weather = pd.DataFrame(hist.data)
+            
+            # Clean up: Replace N/A with a default
+            df_weather['conditions'] = df_weather['conditions'].replace(['N/A', 'None'], 'Clear')
+            
+            # Reorder and display only specific columns
+            display_df = df_weather[['date', 'temperature', 'conditions', 'precipitation']]
+            
+            st.dataframe(display_df, use_container_width=True)
+            
+            # Analytics Chart
+            st.altair_chart(alt.Chart(display_df).mark_line(point=True).encode(
+                x='date', y='temperature', tooltip=['date', 'temperature', 'conditions']
+            ), use_container_width=True)
