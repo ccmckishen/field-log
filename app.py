@@ -119,9 +119,18 @@ with tab2:
         with st.form("log_form", clear_on_submit=True):
             selected_plant = st.selectbox("4. Final Selection:", ["-- Choose --"] + list(plant_dict.keys()))
             action = st.selectbox("5. Action?", [
-                "Soil Amendment", "Started Indoors", "Direct Sowed", "Transplanted", 
-                "Fertilized", "Watering", "Pruned/Trained", "Pest/Disease Discovery", 
-                "Weather Event", "Harvested", "Failed/Lost", "General Observation"
+                "Soil Amendment", 
+                "Started Indoors", 
+                "Direct Sowed", 
+                "Transplanted", 
+                "Fertilized", 
+                "Watering",
+                "Pruned/Trained", 
+                "Pest/Disease Discovery", 
+                "Weather Event", 
+                "Harvested", 
+                "Failed/Lost",
+                "General Observation"
             ])
             notes = st.text_area("6. Notes")
             if st.form_submit_button("☁️ Save to Cloud"):
