@@ -3,6 +3,7 @@ import pandas as pd
 from supabase import create_client, Client
 import datetime
 import altair as alt
+import requests
 
 # --- 1. CONFIGURATION & SUPABASE SETUP ---
 st.set_page_config(page_title="Franklinville Field Log", page_icon="☁️", layout="centered")
@@ -14,6 +15,23 @@ def init_supabase():
     return create_client(url, key)
 
 supabase = init_supabase()
+
+# --- HELPER: WEATHER ---
+def get_weather_data():
+    try:
+        key = st.secrets["WEATHER_API_KEY"]
+        # Franklin, NJ is the user's location
+        url = f"https://api.openweathermap.org/data/2.5/weather?q=Franklin,NJ&appid={key}&units=imperial"
+        res = requests.get(url).json()
+        
+        weather_desc = res['weather'][0]['description']
+        # Check for rain data, use 0 if not present
+        rain_data = res.get('rain', {})
+        rain_1h = rain_data.get('1h', 0)
+        
+        return f"\n[Auto-Log Weather: {weather_desc.capitalize()}. Precipitation (1h): {rain_1h}mm]"
+    except Exception as e:
+        return f"\n[Weather data unavailable: {e}]"
 
 # --- 2. AUTHENTICATION (Sidebar) ---
 if "user" not in st.session_state:
@@ -71,7 +89,11 @@ def load_library():
 def save_log(seed_id, action, notes):
     user = st.session_state.get("user")
     if not user: return
-    data = {"seed_id": seed_id, "action": action, "notes": notes, "user_id": user.id}
+    # Fetch weather automatically at the moment of saving
+    weather_info = get_weather_data()
+    final_notes = notes + weather_info
+    
+    data = {"seed_id": seed_id, "action": action, "notes": final_notes, "user_id": user.id}
     supabase.table("field_logs").insert(data).execute()
 
 df = load_library()
@@ -119,25 +141,16 @@ with tab2:
         with st.form("log_form", clear_on_submit=True):
             selected_plant = st.selectbox("4. Final Selection:", ["-- Choose --"] + list(plant_dict.keys()))
             action = st.selectbox("5. Action?", [
-                "Soil Amendment", 
-                "Started Indoors", 
-                "Direct Sowed", 
-                "Transplanted", 
-                "Fertilized", 
-                "Watering",
-                "Pruned/Trained", 
-                "Pest/Disease Discovery", 
-                "Weather Event", 
-                "Harvested", 
-                "Failed/Lost",
-                "General Observation"
+                "Soil Amendment", "Started Indoors", "Direct Sowed", "Transplanted", 
+                "Fertilized", "Watering", "Pruned/Trained", "Pest/Disease Discovery", 
+                "Weather Event", "Harvested", "Failed/Lost", "General Observation"
             ])
             notes = st.text_area("6. Notes")
             if st.form_submit_button("☁️ Save to Cloud"):
                 if selected_plant == "-- Choose --": st.error("Select a plant!")
                 else:
                     save_log(plant_dict[selected_plant], action, notes)
-                    st.success("Logged successfully!")
+                    st.success("Logged successfully with auto-weather data!")
                     st.rerun()
 
         st.divider()
