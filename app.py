@@ -128,6 +128,60 @@ with tab1:
                     st.info(row.get('sowing_instructions', 'No instructions.'))
 
 with tab2:
+    st.write("### 🌱 Current Season Planting List")
+    st.write("Select the crops from your master library that you are growing this season.")
+    
+    # Fetch seed data including our new column
+    seeds = supabase.table("seeds").select("seed_id, common_name, variety, is_active_season").execute().data
+    
+    if seeds:
+        df = pd.DataFrame(seeds)
+        
+        # 1. Interactive Checklist
+        st.write("**1. Select Active Seeds:**")
+        edited_df = st.data_editor(
+            df,
+            column_config={
+                "seed_id": None, # Hides the database ID from the UI
+                "common_name": "Common Name",
+                "variety": "Variety",
+                "is_active_season": st.column_config.CheckboxColumn(
+                    "Planting This Season?",
+                    help="Check this box to add the seed to your active season list.",
+                    default=False,
+                )
+            },
+            disabled=["common_name", "variety"], # Prevents accidental renaming of the seeds here
+            hide_index=True,
+            use_container_width=True,
+            key="season_editor"
+        )
+        
+        # Save Button for the Checklist
+        if st.button("💾 Save Season List"):
+            for index, row in edited_df.iterrows():
+                # Only update the database if the status changed to save API calls
+                original_status = next(s['is_active_season'] for s in seeds if s['seed_id'] == row['seed_id'])
+                if row['is_active_season'] != original_status:
+                    supabase.table("seeds").update({"is_active_season": row["is_active_season"]}).eq("seed_id", row["seed_id"]).execute()
+            st.success("Season list updated!")
+            st.rerun()
+            
+        st.write("---")
+        
+        # 2. Clean Summary View
+        st.write("### 📋 Your Active Roster")
+        active_seeds = [s for s in seeds if s.get('is_active_season') == True]
+        
+        if active_seeds:
+            # Create a clean dataframe for display
+            display_df = pd.DataFrame(active_seeds)[["common_name", "variety"]]
+            display_df.columns = ["Crop", "Variety"]
+            st.table(display_df)
+        else:
+            st.info("No seeds selected for this season yet. Check the boxes above and hit save!")
+    else:
+        st.warning("Your seed library is empty. Add seeds in Tab 1 first.")with tab2:
     if not df.empty:
         common = st.selectbox("1. Common Name:", ["-- All --"] + sorted(df['common_name'].unique().tolist()), key="log_c")
         g_df = df if common == "-- All --" else df[df['common_name'] == common]
