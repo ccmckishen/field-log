@@ -416,40 +416,68 @@ with tab7:
         st.rerun()
 
     # Individual Crop Editors
-    # 2. Individual Crop Editors for each bed
+   # 2. Individual Crop Editors for each bed
     for bed in raw_beds:
-        # Generate a stable, unique prefix for this bed's elements
-        b_key = str(bed['id'])
-        
-        with st.expander(f"Edit Crops in {bed['name']}"):
+        # Wrap the whole block in a container to isolate keys
+        with st.container():
+            b_key = str(bed['id'])
             
-            # --- QUICK ADD SECTION ---
-            st.write("#### ⚡ Quick Add to this row")
-            with st.form(f"quick_add_{b_key}", clear_on_submit=True):
-                col_a, col_b, col_c, col_d = st.columns([2, 1, 1, 1])
+            with st.expander(f"Edit Crops in {bed['name']}"):
                 
-                all_seeds = supabase.table("seeds").select("seed_id, common_name, variety").eq("user_id", st.session_state["user"].id).execute().data
-                search_query = col_a.text_input("Variety", key=f"search_{b_key}")
-                filtered = [s for s in all_seeds if search_query.lower() in s['variety'].lower() or search_query.lower() in s['common_name'].lower()]
-                s_map = {f"{s['variety']} ({s['common_name']})": s['seed_id'] for s in filtered}
-                
-                sel_s = col_a.selectbox("Select", list(s_map.keys()), key=f"sel_{b_key}", label_visibility="collapsed")
-                direction = col_b.radio("Dir", ["L->R", "R->L"], key=f"dir_{b_key}")
-                f_ft = col_c.number_input("Feet", value=1, step=1, key=f"len_{b_key}")
-                
-                sorted_p = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'], reverse=(direction == "R->L"))
-                default_start = (sorted_p[0]['start_position_ft'] + sorted_p[0]['linear_feet']) if sorted_p else 0
-                pos = col_d.number_input("Start", value=int(default_start), step=1, key=f"pos_{b_key}")
-                
-                c_submit, c_undo = st.columns([3, 1])
-                if c_submit.form_submit_button("Add Crop"):
-                    if sel_s:
-                        start_val = pos if direction == "L->R" else (bed['length_ft'] - pos - f_ft)
-                        supabase.table("bed_plantings").insert({"bed_id": bed['id'], "seed_id": s_map[sel_s], "linear_feet": f_ft, "start_position_ft": start_val}).execute()
+                # --- QUICK ADD SECTION ---
+                st.write("#### ⚡ Quick Add to this row")
+                with st.form(f"quick_add_{b_key}", clear_on_submit=True):
+                    col_a, col_b, col_c, col_d = st.columns([2, 1, 1, 1])
+                    
+                    all_seeds = supabase.table("seeds").select("seed_id, common_name, variety").eq("user_id", st.session_state["user"].id).execute().data
+                    search_query = col_a.text_input("Variety", placeholder="Type...", key=f"search_{b_key}")
+                    filtered = [s for s in all_seeds if search_query.lower() in s['variety'].lower() or search_query.lower() in s['common_name'].lower()]
+                    s_map = {f"{s['variety']} ({s['common_name']})": s['seed_id'] for s in filtered}
+                    
+                    sel_s = col_a.selectbox("Select", list(s_map.keys()), key=f"sel_{b_key}", label_visibility="collapsed")
+                    direction = col_b.radio("Dir", ["L->R", "R->L"], key=f"dir_{b_key}")
+                    f_ft = col_c.number_input("Feet", value=1, step=1, key=f"len_{b_key}")
+                    
+                    sorted_p = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'], reverse=(direction == "R->L"))
+                    default_start = (sorted_p[0]['start_position_ft'] + sorted_p[0]['linear_feet']) if sorted_p else 0
+                    pos = col_d.number_input("Start", value=int(default_start), step=1, key=f"pos_{b_key}")
+                    
+                    c_submit, c_undo = st.columns([3, 1])
+                    if c_submit.form_submit_button("Add Crop"):
+                        if sel_s:
+                            start_val = pos if direction == "L->R" else (bed['length_ft'] - pos - f_ft)
+                            supabase.table("bed_plantings").insert({"bed_id": bed['id'], "seed_id": s_map[sel_s], "linear_feet": f_ft, "start_position_ft": start_val}).execute()
+                            st.rerun()
+                    if bed['bed_plantings'] and c_undo.form_submit_button("❌ Undo"):
+                        last = sorted(bed['bed_plantings'], key=lambda x: x['id'], reverse=True)[0]
+                        supabase.table("bed_plantings").delete().eq("id", last['id']).execute()
                         st.rerun()
-                if bed['bed_plantings'] and c_undo.form_submit_button("❌ Undo"):
-                    last = sorted(bed['bed_plantings'], key=lambda x: x['id'], reverse=True)[0]
-                    supabase.table("bed_plantings").delete().eq("id", last['id']).execute()
+
+                # --- SPREADSHEET EDITOR ---
+                df_bed = pd.DataFrame([{"DB_ID": p['id'], "Crop": p['seeds']['common_name'], "Variety": p['seeds']['variety'], "Start (ft)": int(p['start_position_ft']), "Len (ft)": int(p['linear_feet'])} for p in bed['bed_plantings']])
+                
+                edited_bed = st.data_editor(
+                    df_bed, 
+                    column_config={"DB_ID": None, "Crop": st.column_config.TextColumn(disabled=True), "Variety": st.column_config.TextColumn(disabled=True)}, 
+                    hide_index=True, use_container_width=True, key=f"edit_{b_key}"
+                )
+                
+                c1, c2, c3 = st.columns([1, 1, 3])
+                if c1.button(f"💾 Save {bed['name']}", key=f"save_{b_key}"):
+                    for _, row in edited_bed.iterrows():
+                        supabase.table("bed_plantings").update({"start_position_ft": int(row["Start (ft)"]), "linear_feet": int(row["Len (ft)"])}).eq("id", row["DB_ID"]).execute()
+                    st.rerun()
+                
+                with c2.expander("🗑️ Remove Crops"):
+                    crop_opts = {p['id']: f"{p['seeds']['variety']} ({p['start_position_ft']}ft)" for p in bed['bed_plantings']}
+                    to_rem = st.multiselect("Pick crops", options=list(crop_opts.keys()), format_func=lambda x: crop_opts[x], key=f"del_{b_key}")
+                    if st.button("Confirm Removal", key=f"conf_del_{b_key}"):
+                        for cid in to_rem: supabase.table("bed_plantings").delete().eq("id", cid).execute()
+                        st.rerun()
+                
+                if c3.button(f"🚨 Delete Row: {bed['name']}", key=f"del_bed_{b_key}"):
+                    supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute()
+                    supabase.table("garden_beds").delete().eq("id", bed['id']).execute()
                     st.rerun()
 
             # --- SPREADSHEET EDITOR ---
