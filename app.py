@@ -383,91 +383,63 @@ with tab7:
 
     st.write("---")
 
-   # --- 2. MASTER VISUAL GRID (High-Precision Blueprint) ---
+    # --- 2. MASTER VISUAL BLUEPRINT ---
     raw_beds = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, seeds(common_name, variety))").eq("user_id", st.session_state["user"].id).order("name").execute().data
     
     st.write("### 🗺️ Master Garden Blueprint")
     if raw_beds:
         fig = go.Figure()
-        
-        # Set height based on row count so they aren't squashed
         row_height = 80
         total_height = len(raw_beds) * row_height
         max_bed_len = max([b['length_ft'] for b in raw_beds]) if raw_beds else 20
         
         for i, bed in enumerate(raw_beds):
-            y_pos = bed['name']
-            
-            # 1. Draw the row boundary (The Bed Container)
-            fig.add_shape(type="rect", x0=0, y0=i-0.4, x1=bed['length_ft'], y1=i+0.4,
-                          line=dict(color="black", width=2), fillcolor="white")
-            
-            # 2. Draw each crop as an exact geometric shape
+            fig.add_shape(type="rect", x0=0, y0=i-0.4, x1=bed['length_ft'], y1=i+0.4, line=dict(color="black", width=2), fillcolor="white")
             for p in bed['bed_plantings']:
-                fig.add_shape(type="rect", 
-                              x0=p['start_position_ft'], y0=i-0.3, 
-                              x1=p['start_position_ft'] + p['linear_feet'], y1=i+0.3,
-                              line=dict(color="black", width=1), fillcolor="#2E8B57")
-                
-                # Add text label for the crop
-                fig.add_annotation(x=p['start_position_ft'] + (p['linear_feet']/2), y=i,
-                                   text=p['seeds']['common_name'], showarrow=False,
-                                   font=dict(color="white", size=10))
+                fig.add_shape(type="rect", x0=p['start_position_ft'], y0=i-0.3, x1=p['start_position_ft'] + p['linear_feet'], y1=i+0.3, line=dict(color="black", width=1), fillcolor="#2E8B57")
+                fig.add_annotation(x=p['start_position_ft'] + (p['linear_feet']/2), y=i, text=p['seeds']['common_name'], showarrow=False, font=dict(color="white", size=10))
 
-        # Final Formatting for "Spatial Perfection"
-        fig.update_layout(
-            height=total_height,
-            margin=dict(l=100, r=20, t=20, b=50),
-            xaxis=dict(range=[-1, max_bed_len + 1], dtick=1, gridcolor='LightGray', title="Feet", side="top"),
-            yaxis=dict(tickvals=list(range(len(raw_beds))), ticktext=[b['name'] for b in raw_beds], autorange="reversed"),
-            plot_bgcolor='white'
-        )
+        fig.update_layout(height=total_height, margin=dict(l=100, r=20, t=20, b=50), xaxis=dict(range=[-1, max_bed_len + 1], dtick=1, gridcolor='LightGray', title="Feet", side="top"), yaxis=dict(tickvals=list(range(len(raw_beds))), ticktext=[b['name'] for b in raw_beds], autorange="reversed"), plot_bgcolor='white')
         st.plotly_chart(fig, use_container_width=True)
-   # --- 3. SEPARATED ROW LEDGERS ---
+
+    # --- 3. SEPARATED ROW LEDGERS ---
     st.write("### 📑 Row Ledgers")
     
-    # 1. Management table for Bed Order and Naming
+    # Management table for Bed Order and Naming
     st.write("#### 🏗️ Manage Garden Rows")
-    df_beds = pd.DataFrame(raw_beds)[['id', 'name', 'row_order', 'length_ft']]
-    edited_beds = st.data_editor(
-        df_beds,
-        column_config={"id": None, "name": "Bed Name", "row_order": "Display Order", "length_ft": "Length (ft)"},
-        hide_index=True, use_container_width=True
-    )
+    df_beds = pd.DataFrame(raw_beds)[['id', 'name', 'length_ft']]
+    edited_beds = st.data_editor(df_beds, column_config={"id": None, "name": "Bed Name", "length_ft": "Length (ft)"}, hide_index=True, use_container_width=True)
     
-    if st.button("💾 Save Row Order/Names"):
+    if st.button("💾 Save Row Names/Lengths"):
         for _, row in edited_beds.iterrows():
-            supabase.table("garden_beds").update({
-                "name": row["name"], 
-                "row_order": int(row["row_order"]),
-                "length_ft": int(row["length_ft"])
-            }).eq("id", row["id"]).execute()
+            supabase.table("garden_beds").update({"name": row["name"], "length_ft": int(row["length_ft"])}).eq("id", row["id"]).execute()
         st.rerun()
 
-    # 2. Individual Crop Editors for each bed
+    # Individual Crop Editors
     for bed in raw_beds:
         with st.expander(f"Edit Crops in {bed['name']}"):
-            df_bed = pd.DataFrame([
-                {"DB_ID": p['id'], "Crop": p['seeds']['common_name'], "Start (ft)": int(p['start_position_ft']), "Len (ft)": int(p['linear_feet'])}
-                for p in bed['bed_plantings']
-            ])
-            
-            edited_bed = st.data_editor(
-                df_bed, 
-                column_config={"DB_ID": None, "Crop": st.column_config.TextColumn(disabled=True)}, 
-                hide_index=True, use_container_width=True, key=f"edit_{bed['id']}"
-            )
+            # Quick Add Form
+            with st.form(f"quick_add_{bed['id']}", clear_on_submit=True):
+                col_a, col_b, col_c = st.columns([3, 1, 1])
+                all_seeds = supabase.table("seeds").select("seed_id, common_name, variety").eq("user_id", st.session_state["user"].id).execute().data
+                s_map = {f"{s['common_name']} - {s['variety']}": s['seed_id'] for s in all_seeds}
+                sel_s = col_a.selectbox("Seed", list(s_map.keys()), key=f"sel_{bed['id']}")
+                f_ft = col_b.number_input("Feet", value=1, step=1, key=f"len_{bed['id']}")
+                pos = col_c.number_input("Start", value=0, step=1, key=f"pos_{bed['id']}")
+                if st.form_submit_button("Add Crop"):
+                    supabase.table("bed_plantings").insert({"bed_id": bed['id'], "seed_id": s_map[sel_s], "linear_feet": f_ft, "start_position_ft": pos}).execute()
+                    st.rerun()
+
+            # Spreadsheet Editor
+            df_bed = pd.DataFrame([{"DB_ID": p['id'], "Crop": p['seeds']['common_name'], "Variety": p['seeds']['variety'], "Start (ft)": int(p['start_position_ft']), "Len (ft)": int(p['linear_feet'])} for p in bed['bed_plantings']])
+            edited_bed = st.data_editor(df_bed, column_config={"DB_ID": None, "Crop": st.column_config.TextColumn(disabled=True), "Variety": st.column_config.TextColumn(disabled=True)}, hide_index=True, use_container_width=True, key=f"edit_{bed['id']}")
             
             c1, c2 = st.columns([1, 4])
             if c1.button(f"💾 Save {bed['name']}", key=f"save_{bed['id']}"):
                 for _, row in edited_bed.iterrows():
-                    supabase.table("bed_plantings").update({
-                        "start_position_ft": int(row["Start (ft)"]),
-                        "linear_feet": int(row["Len (ft)"])
-                    }).eq("id", row["DB_ID"]).execute()
+                    supabase.table("bed_plantings").update({"start_position_ft": int(row["Start (ft)"]), "linear_feet": int(row["Len (ft)"])}).eq("id", row["DB_ID"]).execute()
                 st.rerun()
-            
-            if c2.button(f"🗑️ Delete Entire Row: {bed['name']}", key=f"del_bed_{bed['id']}"):
+            if c2.button(f"🗑️ Delete Row: {bed['name']}", key=f"del_bed_{bed['id']}"):
                 supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute()
                 supabase.table("garden_beds").delete().eq("id", bed['id']).execute()
                 st.rerun()
