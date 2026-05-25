@@ -400,34 +400,38 @@ with tab7:
 
     if raw_beds:
         st.write("### 🗺️ Master Garden Grid")
-        fig = go.Figure()
-        max_bed_len = max([b['length_ft'] for b in raw_beds])
         
-        colors = ["#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A", "#19D3F3", "#FF6692", "#B6E880", "#FF97FF", "#FECB52"]
-        variety_colors = {}
-        color_idx = 0
-
+        # Create the grid canvas
+        fig = go.Figure()
+        max_bed_len = max([b['length_ft'] for b in raw_beds]) if raw_beds else 20
+        
+        # Plot rows as distinct segments
         for bed in raw_beds:
             y_pos = bed['name']
-            fig.add_trace(go.Bar(x=[bed['length_ft']], y=[y_pos], orientation='h', marker=dict(color='rgba(240, 240, 240, 0.5)', line=dict(color='gray', width=1)), hoverinfo='none', showlegend=False))
-
+            # Row Boundary
+            fig.add_trace(go.Bar(
+                x=[bed['length_ft']], y=[y_pos], orientation='h',
+                marker=dict(color='white', line=dict(color='black', width=1)),
+                hoverinfo='none', showlegend=False
+            ))
+            # Plantings
             for p in bed['bed_plantings']:
-                crop_label = f"{p['seeds']['common_name']} ({p['seeds']['variety']})"
-                if crop_label not in variety_colors:
-                    variety_colors[crop_label] = colors[color_idx % len(colors)]
-                    color_idx += 1
-
                 fig.add_trace(go.Bar(
                     x=[p['linear_feet']], y=[y_pos], base=p['start_position_ft'], orientation='h',
-                    marker=dict(color=variety_colors[crop_label], line=dict(color='black', width=1)),
+                    marker=dict(color='#2E8B57', line=dict(color='white', width=1)),
                     text=p['seeds']['common_name'], textposition='inside', insidetextanchor='middle',
-                    hovertemplate=f"<b>{crop_label}</b><br>Start: {p['start_position_ft']}ft<br>Len: {p['linear_feet']}ft<extra></extra>",
+                    hoverinfo='text', hovertext=f"{p['seeds']['common_name']} ({p['seeds']['variety']})",
                     showlegend=False
                 ))
 
-        fig.update_layout(height=150 + (len(raw_beds) * 40), margin=dict(l=10, r=10, t=10, b=30),
-                          xaxis=dict(range=[0, max_bed_len], dtick=1, gridcolor='LightGray', title="Linear Feet"),
-                          yaxis=dict(autorange="reversed", gridcolor='LightGray'), plot_bgcolor='rgba(40, 40, 40, 0.05)')
+        # Strict grid formatting
+        fig.update_layout(
+            height=60 * len(raw_beds) + 50, # Dynamic height based on rows
+            margin=dict(l=0, r=0, t=20, b=20),
+            xaxis=dict(range=[0, max_bed_len], dtick=1, gridcolor='LightGray', title="Feet"),
+            yaxis=dict(autorange="reversed", gridcolor='LightGray'),
+            plot_bgcolor='white'
+        )
         st.plotly_chart(fig, use_container_width=True)
 
         # --- 3. MASTER EDITABLE GRID ---
@@ -437,20 +441,29 @@ with tab7:
             for p in bed['bed_plantings']:
                 all_p_data.append({
                     "DB_ID": p['id'], "Bed": bed['name'], "Crop": p['seeds']['common_name'], 
-                    "Variety": p['seeds']['variety'], "Start Pos (ft)": int(p['start_position_ft']),
-                    "Length (ft)": int(p['linear_feet']), "Spacing (in)": int(p['spacing_inches'])
+                    "Variety": p['seeds']['variety'], "Start (ft)": int(p['start_position_ft']),
+                    "Length (ft)": int(p['linear_feet'])
                 })
         
         if all_p_data:
             df_master = pd.DataFrame(all_p_data)
-            edited_grid = st.data_editor(df_master, column_config={"DB_ID": None, "Bed": st.column_config.SelectboxColumn("Bed", options=[b['name'] for b in raw_beds], required=True), "Crop": st.column_config.TextColumn("Crop", disabled=True), "Variety": st.column_config.TextColumn("Variety", disabled=True), "Start Pos (ft)": st.column_config.NumberColumn(step=1), "Length (ft)": st.column_config.NumberColumn(step=1), "Spacing (in)": st.column_config.NumberColumn(step=1)}, hide_index=True, use_container_width=True, key="master_editor")
+            edited_grid = st.data_editor(
+                df_master, 
+                column_config={
+                    "DB_ID": None, 
+                    "Bed": st.column_config.SelectboxColumn("Bed", options=[b['name'] for b in raw_beds], required=True),
+                    "Start (ft)": st.column_config.NumberColumn(step=1), 
+                    "Length (ft)": st.column_config.NumberColumn(step=1)
+                }, 
+                hide_index=True, use_container_width=True, key="master_editor"
+            )
             
             if st.button("💾 Save All Changes"):
                 for _, row in edited_grid.iterrows():
                     new_bed_id = next(b['id'] for b in raw_beds if b['name'] == row['Bed'])
                     supabase.table("bed_plantings").update({
-                        "bed_id": new_bed_id, "start_position_ft": int(row["Start Pos (ft)"]),
-                        "linear_feet": int(row["Length (ft)"]), "spacing_inches": int(row["Spacing (in)"])
+                        "bed_id": new_bed_id, "start_position_ft": int(row["Start (ft)"]),
+                        "linear_feet": int(row["Length (ft)"])
                     }).eq("id", row["DB_ID"]).execute()
                 st.rerun()
 
