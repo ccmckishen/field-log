@@ -419,6 +419,7 @@ with tab7:
     for bed in raw_beds:
         with st.expander(f"Edit Crops in {bed['name']}"):
             # Quick Add Form
+            # --- QUICK ADD SECTION (Variety-First Search) ---
             st.write("#### ⚡ Quick Add to this row")
             with st.form(f"quick_add_{bed['id']}", clear_on_submit=True):
                 col_a, col_b, col_c = st.columns([3, 1, 1])
@@ -426,10 +427,17 @@ with tab7:
                 # Fetch seeds
                 all_seeds = supabase.table("seeds").select("seed_id, common_name, variety").eq("user_id", st.session_state["user"].id).execute().data
                 
-                # Dynamic Filter Logic
-                search_query = col_a.text_input("Search Seed", placeholder="Type to filter...", key=f"search_{bed['id']}")
-                filtered_seeds = [s for s in all_seeds if search_query.lower() in f"{s['common_name']} {s['variety']}".lower()]
-                s_map = {f"{s['common_name']} ({s['variety']})": s['seed_id'] for s in filtered_seeds}
+                # Search by Variety primarily
+                search_query = col_a.text_input("Search Variety", placeholder="Type variety name...", key=f"search_{bed['id']}")
+                
+                # Filter: Searches variety first, then common name
+                filtered_seeds = [
+                    s for s in all_seeds 
+                    if search_query.lower() in s['variety'].lower() or search_query.lower() in s['common_name'].lower()
+                ]
+                
+                # Format for quick selection: "Variety (Common Name)"
+                s_map = {f"{s['variety']} ({s['common_name']})": s['seed_id'] for s in filtered_seeds}
                 
                 sel_s = col_a.selectbox("Select Result", list(s_map.keys()), key=f"sel_{bed['id']}", label_visibility="collapsed")
                 
@@ -443,7 +451,6 @@ with tab7:
                             "linear_feet": f_ft, "start_position_ft": pos
                         }).execute()
                         st.rerun()
-
             # Spreadsheet Editor
             df_bed = pd.DataFrame([{"DB_ID": p['id'], "Crop": p['seeds']['common_name'], "Variety": p['seeds']['variety'], "Start (ft)": int(p['start_position_ft']), "Len (ft)": int(p['linear_feet'])} for p in bed['bed_plantings']])
             edited_bed = st.data_editor(df_bed, column_config={"DB_ID": None, "Crop": st.column_config.TextColumn(disabled=True), "Variety": st.column_config.TextColumn(disabled=True)}, hide_index=True, use_container_width=True, key=f"edit_{bed['id']}")
