@@ -383,38 +383,32 @@ with tab7:
 
     st.write("---")
 
-    # --- 2. BEDS DASHBOARD ---
+    # --- 2. MASTER VISUAL GRID ---
     raw_beds = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, seeds(common_name, variety))").eq("user_id", st.session_state["user"].id).order("name").execute().data
     
-    st.write("### 🗺️ Individual Bed Layouts")
-    
-    for bed in raw_beds:
-        st.subheader(f"📍 {bed['name']} ({bed['length_ft']} ft)")
+    st.write("### 🗺️ Master Garden Blueprint")
+    if raw_beds:
+        fig = go.Figure()
+        max_bed_len = max([b['length_ft'] for b in raw_beds])
         
-        # Grid layout for Visual + Spreadsheet
-        col1, col2 = st.columns([1, 1])
-        
-        # Visual Map on the left
-        with col1:
-            st.markdown(f"**Visual Representation:**")
-            st.markdown("""
-                <style>
-                .bed-box { display: flex; border: 2px solid #333; height: 50px; background: #fff; position: relative; }
-                .crop-segment { position: absolute; height: 100%; background: #2E8B57; border-right: 1px solid white; color: white; font-size: 9px; display: flex; align-items: center; justify-content: center; }
-                </style>
-            """, unsafe_allow_html=True)
-            
-            html_bed = '<div class="bed-box">'
+        for bed in raw_beds:
+            y_pos = bed['name']
+            fig.add_trace(go.Bar(x=[bed['length_ft']], y=[y_pos], orientation='h', marker=dict(color='white', line=dict(color='gray', width=1)), hoverinfo='none', showlegend=False))
             for p in bed['bed_plantings']:
-                left = (p['start_position_ft'] / bed['length_ft']) * 100
-                width = (p['linear_feet'] / bed['length_ft']) * 100
-                html_bed += f'<div class="crop-segment" style="left:{left}%; width:{width}%;">{p["seeds"]["common_name"]}</div>'
-            html_bed += '</div>'
-            st.markdown(html_bed, unsafe_allow_html=True)
+                fig.add_trace(go.Bar(
+                    x=[p['linear_feet']], y=[y_pos], base=p['start_position_ft'], orientation='h',
+                    marker=dict(color='#2E8B57', line=dict(color='white', width=1)),
+                    text=p['seeds']['common_name'], textposition='inside', insidetextanchor='middle',
+                    hoverinfo='text', hovertext=f"{p['seeds']['common_name']} ({p['seeds']['variety']})",
+                    showlegend=False
+                ))
+        fig.update_layout(height=40*len(raw_beds)+50, margin=dict(l=10, r=10, t=10, b=30), xaxis=dict(range=[0, max_bed_len], dtick=1, gridcolor='LightGray', title="Feet"), yaxis=dict(autorange="reversed", gridcolor='LightGray'), plot_bgcolor='white')
+        st.plotly_chart(fig, use_container_width=True)
 
-        # Spreadsheet Editor on the right
-        with col2:
-            st.markdown(f"**Data Spreadsheet:**")
+    # --- 3. SEPARATED BED EDITORS ---
+    st.write("### 📑 Row Ledgers")
+    for bed in raw_beds:
+        with st.expander(f"Edit {bed['name']}"):
             df_bed = pd.DataFrame([
                 {"DB_ID": p['id'], "Crop": p['seeds']['common_name'], "Start (ft)": int(p['start_position_ft']), "Len (ft)": int(p['linear_feet'])}
                 for p in bed['bed_plantings']
@@ -426,15 +420,13 @@ with tab7:
                 hide_index=True, use_container_width=True, key=f"edit_{bed['id']}"
             )
             
-            if st.button(f"💾 Save {bed['name']}", key=f"btn_{bed['id']}"):
+            if st.button(f"💾 Save {bed['name']} Changes", key=f"save_{bed['id']}"):
                 for _, row in edited_bed.iterrows():
                     supabase.table("bed_plantings").update({
                         "start_position_ft": int(row["Start (ft)"]),
                         "linear_feet": int(row["Len (ft)"])
                     }).eq("id", row["DB_ID"]).execute()
                 st.rerun()
-
-        st.write("---")
 # --- NEW TAB 8: Community Exchange & Trades ---
 with tab8:
     st.write("### 🤝 Seed Exchange Hub")
