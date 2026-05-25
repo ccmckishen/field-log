@@ -215,58 +215,61 @@ with tab6:
     st.write("### 📏 Detailed Row Planner")
     
     # 1. Add Planting (3-Tier Cascading)
-    with st.expander("➕ Plant Crop (Common -> Latin -> Variety)"):
+    with st.expander("➕ Plant Crop (Common -> Scientific -> Variety)"):
         beds = supabase.table("garden_beds").select("id, name").eq("user_id", st.session_state["user"].id).execute().data
-        seeds = supabase.table("seeds").select("seed_id, common_name, latin_name, variety").execute().data
+        # Querying the new column name
+        seeds = supabase.table("seeds").select("seed_id, common_name, scientific_name, variety").execute().data
         
         bed_map = {b['name']: b['id'] for b in beds}
         
-        # Tier 1: Common Name
-        crop_names = sorted(list(set([s['common_name'] for s in seeds])))
-        sel_crop = st.selectbox("1. Common Name", crop_names, key="c_sel")
-        
-        # Tier 2: Latin Name
-        latin_names = sorted(list(set([s['latin_name'] for s in seeds if s['common_name'] == sel_crop])))
-        sel_latin = st.selectbox("2. Latin Name", latin_names, key="l_sel")
-        
-        # Tier 3: Variety
-        varieties = [s for s in seeds if s['common_name'] == sel_crop and s['latin_name'] == sel_latin]
-        var_map = {f"{s['variety']}": s['seed_id'] for s in varieties}
-        sel_var = st.selectbox("3. Variety", list(var_map.keys()), key="v_sel")
-        
-        with st.form("plant_form_detailed"):
-            c1, c2, c3, c4 = st.columns(4)
-            sel_bed = c1.selectbox("Bed", list(bed_map.keys()))
-            lin_ft = c2.number_input("Length (ft)", 0.0)
-            start_pos = c3.number_input("Start Pos (ft)", 0.0, help="Distance from start of row")
-            spacing = c4.number_input("Spacing (in)", 0.0)
+        if seeds:
+            # Tier 1: Common Name
+            crop_names = sorted(list(set([s['common_name'] for s in seeds])))
+            sel_crop = st.selectbox("1. Common Name", crop_names, key="c_sel")
             
-            if st.form_submit_button("Confirm Planting"):
-                supabase.table("bed_plantings").insert({
-                    "bed_id": bed_map[sel_bed], 
-                    "seed_id": var_map[sel_var], 
-                    "linear_feet": lin_ft,
-                    "start_position_ft": start_pos,
-                    "spacing_inches": spacing
-                }).execute()
-                st.rerun()
+            # Tier 2: Scientific Name
+            scientific_names = sorted(list(set([s['scientific_name'] for s in seeds if s['common_name'] == sel_crop])))
+            sel_scientific = st.selectbox("2. Scientific Name (Genus species)", scientific_names, key="l_sel")
+            
+            # Tier 3: Variety
+            varieties = [s for s in seeds if s['common_name'] == sel_crop and s['scientific_name'] == sel_scientific]
+            var_map = {f"{s['variety']}": s['seed_id'] for s in varieties}
+            sel_var = st.selectbox("3. Variety", list(var_map.keys()), key="v_sel")
+            
+            with st.form("plant_form_detailed"):
+                c1, c2, c3, c4 = st.columns(4)
+                sel_bed = c1.selectbox("Bed", list(bed_map.keys()))
+                lin_ft = c2.number_input("Length (ft)", 0.0)
+                start_pos = c3.number_input("Start Pos (ft)", 0.0)
+                spacing = c4.number_input("Spacing (in)", 0.0)
+                
+                if st.form_submit_button("Confirm Planting"):
+                    supabase.table("bed_plantings").insert({
+                        "bed_id": bed_map[sel_bed], 
+                        "seed_id": var_map[sel_var], 
+                        "linear_feet": lin_ft,
+                        "start_position_ft": start_pos,
+                        "spacing_inches": spacing
+                    }).execute()
+                    st.rerun()
+        else:
+            st.info("No seeds found. Add seeds to your library first.")
 
     # 2. Visual Row View
     st.write("---")
     st.write("### 📋 Row Inventory")
-    beds_data = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, spacing_inches, seeds(common_name, latin_name, variety))").eq("user_id", st.session_state["user"].id).order("row_order").execute().data
+    beds_data = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, spacing_inches, seeds(common_name, scientific_name, variety))").eq("user_id", st.session_state["user"].id).order("row_order").execute().data
     
     for bed in beds_data:
         st.subheader(f"Row {bed['row_order']}: {bed['name']} ({bed['length_ft']}ft)")
         
         if bed['bed_plantings']:
-            # Sort plantings by start position to see them as they appear in the row
             sorted_plantings = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'])
             
             display_data = [{
                 "Pos (ft)": p['start_position_ft'],
                 "Variety": f"{p['seeds']['common_name']} ({p['seeds']['variety']})",
-                "Latin": p['seeds']['latin_name'],
+                "Scientific": p['seeds']['scientific_name'], # Updated label
                 "Length": p['linear_feet'],
                 "Spacing": f"{p['spacing_inches']}in"
             } for p in sorted_plantings]
