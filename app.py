@@ -302,4 +302,4 @@ with tab6:
             supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute(); supabase.table("garden_beds").delete().eq("id", bed['id']).execute(); st.rerun()
         
         # Visual Layout
-        plantings = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft
+plantings = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'])
