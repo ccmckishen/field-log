@@ -128,18 +128,17 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 with tab1:
     st.write("### 🗂️ My Private Seed Library")
     
-    # --- NEW: CLAIM LEGACY SEEDS SCRIPT ---
-    # Detects if there are seeds in the database without an assigned user
+    # --- ONE-TIME ADMIN OVERRIDE ---
     unclaimed_seeds = supabase.table("seeds").select("seed_id").is_("user_id", "null").execute().data
     
     if unclaimed_seeds:
-        st.warning("⚠️ We found legacy seeds in the database from before the community update. They need to be linked to your new account.")
-        if st.button("📥 Claim Old Seed Library"):
-            # Assigns all old seeds to your specific user ID
-            for seed in unclaimed_seeds:
-                supabase.table("seeds").update({"user_id": str(st.session_state["user"].id)}).eq("seed_id", seed["seed_id"]).execute()
-            fetch_seed_library.clear() # Clears the cache so they show up instantly
-            st.rerun()
+        st.error(f"⚠️ {len(unclaimed_seeds)} legacy seeds are stuck without an owner. API Security is blocking the app from claiming them.")
+        st.write("**To fix this, copy the code below and run it in your Supabase SQL Editor:**")
+        
+        # This dynamically inserts your actual user ID into the SQL command
+        st.code(f"UPDATE seeds SET user_id = '{st.session_state['user'].id}' WHERE user_id IS NULL;", language="sql")
+        
+        st.write("*Once you hit RUN in Supabase, come back here and refresh the page!*")
         st.write("---")
     
     # 1. Manage Library Privacy (Data Editor)
