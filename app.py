@@ -356,116 +356,78 @@ with tab6:
 with tab7:
     st.write("### 🌿 Garden Layout & Planner")
 
-    # --- 1. TOP TOOLS: DEFINE & PLANT ---
+    # --- 1. TOP TOOLS ---
     c_top1, c_top2 = st.columns(2)
-    
-    with c_top1.expander("➕ Define New Bed/Row", expanded=False):
+    with c_top1.expander("➕ Define New Bed/Row"):
         with st.form("new_bed_row"):
             b_name = st.text_input("Bed Name")
-            b_len = st.number_input("Total Length (ft)", min_value=1, value=20, step=1)
-            b_ord = st.number_input("Display Order", value=1, step=1)
+            b_len = st.number_input("Total Length (ft)", value=20, step=1)
             if st.form_submit_button("Create Bed"):
-                supabase.table("garden_beds").insert({
-                    "user_id": str(st.session_state["user"].id),
-                    "name": b_name, "length_ft": b_len, "row_order": b_ord
-                }).execute()
+                supabase.table("garden_beds").insert({"user_id": str(st.session_state["user"].id), "name": b_name, "length_ft": b_len}).execute()
                 st.rerun()
 
-    with c_top2.expander("➕ Plant New Crop", expanded=False):
+    with c_top2.expander("➕ Plant New Crop"):
         beds = supabase.table("garden_beds").select("id, name").eq("user_id", st.session_state["user"].id).execute().data
         my_seeds = supabase.table("seeds").select("seed_id, common_name, variety").eq("user_id", st.session_state["user"].id).execute().data
-        
         if my_seeds and beds:
             with st.form("quick_plant"):
                 s_opts = {f"{s['common_name']} ({s['variety']})": s['seed_id'] for s in my_seeds}
-                sel_seed = st.selectbox("Select Seed", list(s_opts.keys()))
-                sel_bed = st.selectbox("Select Bed", [b['name'] for b in beds])
-                col_p1, col_p2 = st.columns(2)
-                p_start = col_p1.number_input("Start Pos (ft)", step=1)
-                p_len = col_p2.number_input("Length (ft)", step=1, value=2)
+                sel_seed = st.selectbox("Seed", list(s_opts.keys()))
+                sel_bed = st.selectbox("Bed", [b['name'] for b in beds])
+                p_start = st.number_input("Start (ft)", step=1)
+                p_len = st.number_input("Length (ft)", step=1, value=2)
                 if st.form_submit_button("Add to Map"):
                     bed_id = next(b['id'] for b in beds if b['name'] == sel_bed)
-                    supabase.table("bed_plantings").insert({
-                        "bed_id": bed_id, "seed_id": s_opts[sel_seed],
-                        "start_position_ft": p_start, "linear_feet": p_len, "spacing_inches": 0
-                    }).execute()
+                    supabase.table("bed_plantings").insert({"bed_id": bed_id, "seed_id": s_opts[sel_seed], "start_position_ft": p_start, "linear_feet": p_len}).execute()
                     st.rerun()
-        else:
-            st.info("Define a bed and add seeds to your library first.")
 
     st.write("---")
 
-    # --- 2. THE VISUAL MASTER MAP ---
-    raw_beds = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, spacing_inches, seeds(common_name, variety))").eq("user_id", st.session_state["user"].id).order("row_order").execute().data
+    # --- 2. THE VISUAL GRID ---
+    raw_beds = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, seeds(common_name))").eq("user_id", st.session_state["user"].id).order("name").execute().data
+    
+    st.write("### 🗺️ Master Garden Grid")
+    
+    # CSS for the grid layout
+    st.markdown("""
+        <style>
+        .row-container { display: flex; align-items: center; margin-bottom: 5px; height: 40px; background: #f0f0f0; border: 1px solid #ccc; position: relative; }
+        .crop-block { position: absolute; height: 30px; background: #2E8B57; color: white; display: flex; align-items: center; justify-content: center; font-size: 10px; border: 1px solid white; }
+        </style>
+    """, unsafe_allow_html=True)
 
-    if raw_beds:
-        st.write("### 🗺️ Master Garden Grid")
-        
-        # Create the grid canvas
-        fig = go.Figure()
-        max_bed_len = max([b['length_ft'] for b in raw_beds]) if raw_beds else 20
-        
-        # Plot rows as distinct segments
-        for bed in raw_beds:
-            y_pos = bed['name']
-            # Row Boundary
-            fig.add_trace(go.Bar(
-                x=[bed['length_ft']], y=[y_pos], orientation='h',
-                marker=dict(color='white', line=dict(color='black', width=1)),
-                hoverinfo='none', showlegend=False
-            ))
-            # Plantings
-            for p in bed['bed_plantings']:
-                fig.add_trace(go.Bar(
-                    x=[p['linear_feet']], y=[y_pos], base=p['start_position_ft'], orientation='h',
-                    marker=dict(color='#2E8B57', line=dict(color='white', width=1)),
-                    text=p['seeds']['common_name'], textposition='inside', insidetextanchor='middle',
-                    hoverinfo='text', hovertext=f"{p['seeds']['common_name']} ({p['seeds']['variety']})",
-                    showlegend=False
-                ))
+    for bed in raw_beds:
+        st.write(f"**{bed['name']}**")
+        # Container representing the full length of the bed
+        html_row = f'<div class="row-container" style="width: 100%;">'
+        for p in bed['bed_plantings']:
+            left_pct = (p['start_position_ft'] / bed['length_ft']) * 100
+            width_pct = (p['linear_feet'] / bed['length_ft']) * 100
+            html_row += f'<div class="crop-block" style="left: {left_pct}%; width: {width_pct}%;">{p["seeds"]["common_name"]}</div>'
+        html_row += '</div>'
+        st.markdown(html_row, unsafe_allow_html=True)
 
-        # Strict grid formatting
-        fig.update_layout(
-            height=60 * len(raw_beds) + 50, # Dynamic height based on rows
-            margin=dict(l=0, r=0, t=20, b=20),
-            xaxis=dict(range=[0, max_bed_len], dtick=1, gridcolor='LightGray', title="Feet"),
-            yaxis=dict(autorange="reversed", gridcolor='LightGray'),
-            plot_bgcolor='white'
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-        # --- 3. MASTER EDITABLE GRID ---
-        st.write("### 📑 Master Spreadsheet Editor")
-        all_p_data = []
-        for bed in raw_beds:
-            for p in bed['bed_plantings']:
-                all_p_data.append({
-                    "DB_ID": p['id'], "Bed": bed['name'], "Crop": p['seeds']['common_name'], 
-                    "Variety": p['seeds']['variety'], "Start (ft)": int(p['start_position_ft']),
-                    "Length (ft)": int(p['linear_feet'])
-                })
+    # --- 3. MASTER SPREADSHEET EDITOR ---
+    st.write("### 📑 Master Spreadsheet Editor")
+    all_p_data = []
+    for bed in raw_beds:
+        for p in bed['bed_plantings']:
+            all_p_data.append({
+                "DB_ID": p['id'], "Bed": bed['name'], "Crop": p['seeds']['common_name'], 
+                "Start (ft)": int(p['start_position_ft']), "Length (ft)": int(p['linear_feet'])
+            })
+    
+    if all_p_data:
+        df_master = pd.DataFrame(all_p_data)
+        edited_grid = st.data_editor(df_master, column_config={"DB_ID": None, "Bed": st.column_config.SelectboxColumn("Bed", options=[b['name'] for b in raw_beds], required=True), "Start (ft)": st.column_config.NumberColumn(step=1), "Length (ft)": st.column_config.NumberColumn(step=1)}, hide_index=True, use_container_width=True)
         
-        if all_p_data:
-            df_master = pd.DataFrame(all_p_data)
-            edited_grid = st.data_editor(
-                df_master, 
-                column_config={
-                    "DB_ID": None, 
-                    "Bed": st.column_config.SelectboxColumn("Bed", options=[b['name'] for b in raw_beds], required=True),
-                    "Start (ft)": st.column_config.NumberColumn(step=1), 
-                    "Length (ft)": st.column_config.NumberColumn(step=1)
-                }, 
-                hide_index=True, use_container_width=True, key="master_editor"
-            )
-            
-            if st.button("💾 Save All Changes"):
-                for _, row in edited_grid.iterrows():
-                    new_bed_id = next(b['id'] for b in raw_beds if b['name'] == row['Bed'])
-                    supabase.table("bed_plantings").update({
-                        "bed_id": new_bed_id, "start_position_ft": int(row["Start (ft)"]),
-                        "linear_feet": int(row["Length (ft)"])
-                    }).eq("id", row["DB_ID"]).execute()
-                st.rerun()
+        if st.button("💾 Save All Changes"):
+            for _, row in edited_grid.iterrows():
+                new_bed_id = next(b['id'] for b in raw_beds if b['name'] == row['Bed'])
+                supabase.table("bed_plantings").update({
+                    "bed_id": new_bed_id, "start_position_ft": int(row["Start (ft)"]), "linear_feet": int(row["Length (ft)"])
+                }).eq("id", row["DB_ID"]).execute()
+            st.rerun()
 
 # --- NEW TAB 8: Community Exchange & Trades ---
 with tab8:
