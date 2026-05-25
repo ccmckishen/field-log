@@ -222,12 +222,14 @@ with tab6:
     # --- 2. ADD/EDIT BED FORM ---
     with st.expander("➕ Define/Update Bed", expanded=(st.session_state.edit_bed_id is not None)):
         with st.form("bed_form"):
-            default = st.session_state.edit_data if st.session_state.edit_data else {"name":"", "length_ft":0.0, "width_ft":0.0, "row_order":1}
+            default = st.session_state.edit_data if st.session_state.edit_data else {"name":"", "length_ft":0, "width_ft":0, "row_order":1}
             b_name = st.text_input("Bed Name", value=default['name'])
             c1, c2 = st.columns(2)
-            b_len = c1.number_input("Length (ft)", value=float(default['length_ft']))
-            b_wid = c2.number_input("Width (ft)", value=float(default['width_ft']))
-            b_ord = st.number_input("Row Order (1, 2, 3...)", value=int(default['row_order']))
+            
+            # Updated to increment by 1 (Integers)
+            b_len = c1.number_input("Length (ft)", value=int(float(default['length_ft'])), step=1)
+            b_wid = c2.number_input("Width (ft)", value=int(float(default['width_ft'])), step=1)
+            b_ord = st.number_input("Row Order (1, 2, 3...)", value=int(default['row_order']), step=1)
             
             submit_label = "Update Bed" if st.session_state.edit_bed_id else "Create Bed"
             c1, c2 = st.columns(2)
@@ -250,10 +252,8 @@ with tab6:
         if seeds and beds:
             search = st.text_input("🔍 Quick Search (Common, Scientific, or Variety)", "").lower()
             
-            # Expanded Filter Logic: Searches across common, variety, genus, and species
             def matches_search(s, query):
                 if not query: return True
-                # Safely combine text fields to avoid errors if a field is empty
                 searchable_text = f"{s.get('common_name', '')} {s.get('variety', '')} {s.get('genus', '')} {s.get('species', '')} {s.get('botanical_subspecies', '')}".lower()
                 return query in searchable_text
 
@@ -261,7 +261,6 @@ with tab6:
 
             def get_sci_name(s): return f"{s['genus']} {s['species']} {s['botanical_subspecies'] or ''}".strip()
             
-            # Cascading dropdowns only run if active_seeds isn't empty
             if active_seeds:
                 crop_names = sorted(list(set([s['common_name'] for s in active_seeds])))
                 sel_crop = st.selectbox("1. Common Name", crop_names)
@@ -276,9 +275,12 @@ with tab6:
                 with st.form("plant_form_detailed"):
                     c1, c2, c3, c4 = st.columns(4)
                     sel_bed = c1.selectbox("Bed", [b['name'] for b in beds])
-                    lin_ft = c2.number_input("Length (ft)", 0.0)
-                    start_pos = c3.number_input("Start Pos (ft)", 0.0)
-                    spacing = c4.number_input("Spacing (in)", 0.0)
+                    
+                    # Updated to integers and increment by 1
+                    lin_ft = c2.number_input("Length (ft)", min_value=0, value=0, step=1)
+                    start_pos = c3.number_input("Start Pos (ft)", min_value=0, value=0, step=1)
+                    spacing = c4.number_input("Spacing (in)", min_value=0, value=0, step=1)
+                    
                     if st.form_submit_button("Confirm Planting"):
                         bed_id = next(b['id'] for b in beds if b['name'] == sel_bed)
                         supabase.table("bed_plantings").insert({"bed_id": bed_id, "seed_id": var_map[sel_var], "linear_feet": lin_ft, "start_position_ft": start_pos, "spacing_inches": spacing}).execute()
