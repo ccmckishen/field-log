@@ -16,49 +16,30 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# --- 2. AUTHENTICATION UI ---
-def render_auth_ui():
-    st.title("🔐 Login / Sign Up")
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-    
-    col1, col2 = st.columns(2)
-    if col1.button("Login"):
-        try:
-            res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-            st.session_state["user"] = res.user
-            st.rerun()
-        except Exception as e:
-            st.error("Login failed. Check your credentials.")
-            
-    if col2.button("Sign Up"):
-        try:
-            supabase.auth.sign_up({"email": email, "password": password})
-            st.success("Account created! Please log in.")
-        except Exception as e:
-            st.error(f"Signup failed: {e}")
-    st.stop()
-
-# --- 3. WEATHER HELPERS ---
-LAT, LON = "41.109", "-74.585"
+# --- 2. HELPERS ---
 WMO_CODES = {0: "Clear", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast", 45: "Fog", 61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain"}
 
-def fetch_weather():
+def get_lat_lon(zip_code):
     try:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&current=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph&timezone=America/New_York"
+        url = f"https://nominatim.openstreetmap.org/search?postalcode={zip_code}&country=US&format=json"
+        res = requests.get(url, headers={'User-Agent': 'CloudFieldApp'}).json()
+        return (res[0]['lat'], res[0]['lon']) if res else (None, None)
+    except Exception: return None, None
+
+def fetch_weather(lat, lon):
+    try:
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph&timezone=America/New_York"
         res = requests.get(url).json().get('current', {})
         return {
-            "temp": res.get('temperature_2m', 0.0),
-            "rain": res.get('precipitation', 0.0),
+            "temp": res.get('temperature_2m', 0.0), "rain": res.get('precipitation', 0.0),
             "conditions": WMO_CODES.get(res.get('weather_code', 0), "Clear"),
-            "wind_speed": res.get('wind_speed_10m', 0.0),
-            "wind_dir": res.get('wind_direction_10m', 0.0)
+            "wind_speed": res.get('wind_speed_10m', 0.0), "wind_dir": res.get('wind_direction_10m', 0.0)
         }
     except Exception: return {"temp": 0.0, "rain": 0.0, "conditions": "Clear", "wind_speed": 0.0, "wind_dir": 0.0}
 
-def fetch_weather_historical(date_str):
+def fetch_weather_historical(lat, lon, date_str):
     try:
-        url = f"https://archive-api.open-meteo.com/v1/archive?latitude={LAT}&longitude={LON}&start_date={date_str}&end_date={date_str}&daily=temperature_2m_mean,precipitation_sum,weather_code,wind_speed_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph&timezone=America/New_York"
+        url = f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lon}&start_date={date_str}&end_date={date_str}&daily=temperature_2m_mean,precipitation_sum,weather_code,wind_speed_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph&timezone=America/New_York"
         res = requests.get(url).json().get('daily', {})
         return {
             "temp": res.get('temperature_2m_mean', [0.0])[0],
@@ -69,7 +50,28 @@ def fetch_weather_historical(date_str):
         }
     except Exception: return {"temp": 0.0, "rain": 0.0, "conditions": "Clear", "wind_speed": 0.0, "wind_dir": 0.0}
 
-# --- 4. DATA LOADING ---
+# --- 3. AUTH & LIBRARY ---
+def render_auth_ui():
+    st.title("🔐 Login / Sign Up")
+    email, password = st.text_input("Email"), st.text_input("Password", type="password")
+    c1, c2 = st.columns(2)
+    if c1.button("Login"):
+        try:
+            st.session_state["user"] = supabase.auth.sign_in_with_password({"email": email, "password": password}).user
+            st.rerun()
+        except: st.error("Login failed.")
+    if c2.button("Sign Up"):
+        try:
+            supabase.auth.sign_up({"email": email, "password": password})
+            st.success("Account created!")
+        except: st.error("Signup failed.")
+    st.stop()
+
+if "user" not in st.session_state:
+    session = supabase.auth.get_session()
+    if session: st.session_state["user"] = session.user
+    else: render_auth_ui()
+
 @st.cache_data(ttl=3600)
 def load_library():
     try:
@@ -77,106 +79,94 @@ def load_library():
         df = pd.DataFrame(response.data)
         df['display_name'] = df['common_name'] + " - " + df['variety'] + " (" + df['genus'] + " " + df['species'] + ")"
         return df
-    except Exception: return pd.DataFrame()
+    except: return pd.DataFrame()
 
-# --- 5. MAIN APP FLOW ---
-if "user" not in st.session_state:
-    session = supabase.auth.get_session()
-    if session: 
-        st.session_state["user"] = session.user
-    else:
-        render_auth_ui()
-
-# If we reached here, the user is logged in
 df = load_library()
-st.title("☁️ Cloud Field App")
 
+# --- 4. APP UI ---
+st.title("☁️ Cloud Field App")
 if st.sidebar.button("Logout"):
     supabase.auth.sign_out()
     del st.session_state["user"]
     st.rerun()
 
-tab1, tab2, tab3, tab4 = st.tabs(["🗂️ Library", "📝 Field Log", "📊 Insights", "🌤️ Weather History"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗂️ Library", "📝 Field Log", "📊 Insights", "🌤️ Weather History", "👤 Profile"])
 
 with tab1:
     st.write("### 🗂️ Seed Library")
     if not df.empty:
-        common = st.selectbox("Common Name:", ["-- All --"] + sorted(df['common_name'].unique().tolist()), key="lib_common")
-        genus_df = df if common == "-- All --" else df[df['common_name'] == common]
-        genus = st.selectbox("Genus:", ["-- All --"] + sorted(genus_df['genus'].unique().tolist()), key="lib_genus")
-        spec_df = genus_df if genus == "-- All --" else genus_df[genus_df['genus'] == genus]
-        species = st.selectbox("Species:", ["-- All --"] + sorted(spec_df['species'].unique().tolist()), key="lib_species")
-        final_df = spec_df if species == "-- All --" else spec_df[spec_df['species'] == species]
+        common = st.selectbox("Common Name:", ["-- All --"] + sorted(df['common_name'].unique().tolist()), key="lib_c")
+        g_df = df if common == "-- All --" else df[df['common_name'] == common]
+        genus = st.selectbox("Genus:", ["-- All --"] + sorted(g_df['genus'].unique().tolist()), key="lib_g")
+        s_df = g_df if genus == "-- All --" else g_df[g_df['genus'] == genus]
+        species = st.selectbox("Species:", ["-- All --"] + sorted(s_df['species'].unique().tolist()), key="lib_s")
+        f_df = s_df if species == "-- All --" else s_df[s_df['species'] == species]
         
         if common == "-- All --" and genus == "-- All --" and species == "-- All --":
-            st.info("Select a category above to view your seeds.")
+            st.info("Select a category above to view seeds.")
         else:
-            for _, row in final_df.iterrows():
+            for _, row in f_df.iterrows():
                 with st.expander(f"🌿 {row['common_name']} - {row['variety']}"):
                     st.write(f"Botanical: *{row['genus']} {row['species']}*")
                     st.info(row.get('sowing_instructions', 'No instructions.'))
 
 with tab2:
     if not df.empty:
-        common = st.selectbox("1. Common Name:", ["-- All --"] + sorted(df['common_name'].unique().tolist()), key="log_common")
-        genus_df = df if common == "-- All --" else df[df['common_name'] == common]
-        genus = st.selectbox("2. Genus:", ["-- All --"] + sorted(genus_df['genus'].unique().tolist()), key="log_genus")
-        spec_df = genus_df if genus == "-- All --" else genus_df[genus_df['genus'] == genus]
-        species = st.selectbox("3. Species:", ["-- All --"] + sorted(spec_df['species'].unique().tolist()), key="log_species")
-        final_df = spec_df if species == "-- All --" else spec_df[spec_df['species'] == species]
+        common = st.selectbox("1. Common Name:", ["-- All --"] + sorted(df['common_name'].unique().tolist()), key="log_c")
+        g_df = df if common == "-- All --" else df[df['common_name'] == common]
+        genus = st.selectbox("2. Genus:", ["-- All --"] + sorted(g_df['genus'].unique().tolist()), key="log_g")
+        s_df = g_df if genus == "-- All --" else g_df[g_df['genus'] == genus]
+        species = st.selectbox("3. Species:", ["-- All --"] + sorted(s_df['species'].unique().tolist()), key="log_s")
+        f_df = s_df if species == "-- All --" else s_df[s_df['species'] == species]
         
         with st.form("log_form", clear_on_submit=True):
-            plant_options = dict(zip(final_df['display_name'], final_df['seed_id']))
-            selected_plant = st.selectbox("4. Plant:", ["-- Choose --"] + list(plant_options.keys()))
-            action = st.selectbox("5. Action?", ["Watering", "Direct Sowed", "Harvested", "General Observation", "Weather Event"])
+            opts = dict(zip(f_df['display_name'], f_df['seed_id']))
+            sel = st.selectbox("4. Plant:", ["-- Choose --"] + list(opts.keys()))
+            act = st.selectbox("5. Action?", ["Watering", "Direct Sowed", "Harvested", "General Observation"])
             notes = st.text_area("6. Notes")
-            if st.form_submit_button("☁️ Save to Cloud"):
-                supabase.table("field_logs").insert({"seed_id": int(plant_options[selected_plant]), "action": action, "notes": notes, "user_id": str(st.session_state["user"].id)}).execute()
+            if st.form_submit_button("☁️ Save"):
+                supabase.table("field_logs").insert({"seed_id": int(opts[sel]), "action": act, "notes": notes, "user_id": str(st.session_state["user"].id)}).execute()
                 st.success("Logged!")
-                st.rerun()
 
 with tab3:
-    st.write("### 📈 Analytics")
     logs = supabase.table("field_logs").select("*").eq("user_id", st.session_state["user"].id).execute()
-    if logs.data:
-        st.altair_chart(alt.Chart(pd.DataFrame(logs.data)).mark_bar().encode(x='action', y='count()'), use_container_width=True)
+    if logs.data: st.altair_chart(alt.Chart(pd.DataFrame(logs.data)).mark_bar().encode(x='action', y='count()'), use_container_width=True)
 
 with tab4:
-    st.write("### 🌤️ Daily Weather Log")
-    if "user" in st.session_state:
-        # Automatic Log
+    loc = supabase.table("user_settings").select("lat, lon").eq("user_id", st.session_state["user"].id).single().execute()
+    if not loc.data:
+        st.warning("Please save your location in the Profile tab first.")
+    else:
+        lat, lon = loc.data['lat'], loc.data['lon']
+        # Auto-Sync Today
         today = datetime.date.today().isoformat()
         if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", today).execute().data:
-            w = fetch_weather()
-            supabase.table("weather_logs").insert({
-                "user_id": str(st.session_state["user"].id), "date": today, "temperature": float(w['temp']), 
-                "conditions": str(w['conditions']), "precipitation": float(w['rain']),
-                "wind_speed": float(w['wind_speed']), "wind_direction": float(w['wind_dir'])
-            }).execute()
+            w = fetch_weather(lat, lon)
+            supabase.table("weather_logs").insert({"user_id": str(st.session_state["user"].id), "date": today, "temperature": float(w['temp']), "conditions": str(w['conditions']), "precipitation": float(w['rain']), "wind_speed": float(w['wind_speed']), "wind_direction": float(w['wind_dir'])}).execute()
             st.rerun()
         
-        # Sync Historical
         if st.button("🔄 Sync Historical Data"):
             start = datetime.date(2026, 1, 1)
             for i in range((datetime.date.today() - start).days + 1):
                 day = (start + datetime.timedelta(days=i)).isoformat()
                 if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", day).execute().data:
-                    hw = fetch_weather_historical(day)
-                    supabase.table("weather_logs").insert({
-                        "user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), 
-                        "conditions": str(hw['conditions']), "precipitation": float(hw['rain']),
-                        "wind_speed": float(hw['wind_speed']), "wind_direction": float(hw['wind_dir'])
-                    }).execute()
+                    hw = fetch_weather_historical(lat, lon, day)
+                    supabase.table("weather_logs").insert({"user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), "conditions": str(hw['conditions']), "precipitation": float(hw['rain']), "wind_speed": float(hw['wind_speed']), "wind_direction": float(hw['wind_dir'])}).execute()
             st.rerun()
 
-        # Display Data with "Zero-Fill" Logic
         hist = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
         if hist.data:
             df_w = pd.DataFrame(hist.data)
             df_w['conditions'] = df_w['conditions'].replace(['N/A', 'None', 'not available'], 'Clear').fillna('Clear')
-            
-            # This forces 'None' or empty values to be 0
-            df_w['wind_speed'] = pd.to_numeric(df_w['wind_speed'], errors='coerce').fillna(0)
-            df_w['wind_direction'] = pd.to_numeric(df_w['wind_direction'], errors='coerce').fillna(0)
-            
+            df_w[['wind_speed', 'wind_direction']] = df_w[['wind_speed', 'wind_direction']].fillna(0)
             st.dataframe(df_w, use_container_width=True)
+
+with tab5:
+    st.write("### 👤 Location Settings")
+    zip_code = st.text_input("Enter your ZIP Code:")
+    if st.button("Save Location"):
+        lat, lon = get_lat_lon(zip_code)
+        if lat and lon:
+            supabase.table("user_settings").upsert({"user_id": str(st.session_state["user"].id), "lat": lat, "lon": lon}).execute()
+            st.success("Location saved!")
+        else: st.error("Invalid ZIP Code.")
