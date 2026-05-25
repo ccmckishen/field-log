@@ -214,7 +214,7 @@ with tab5:
 with tab6:
     st.write("### 📏 Row-Based Garden Planner")
     
-    # 1. Manage Beds (With Dimensions & Order)
+    # 1. Manage Beds
     with st.expander("➕ Define/Update Bed"):
         with st.form("bed_form"):
             b_name = st.text_input("Bed Name")
@@ -228,7 +228,7 @@ with tab6:
                 }).execute()
                 st.rerun()
 
-    # 2. Add Crops with Linear Feet
+    # 2. Add Crops
     with st.expander("➕ Plant Crop in Bed"):
         beds = supabase.table("garden_beds").select("id, name").eq("user_id", st.session_state["user"].id).execute().data
         seeds = supabase.table("seeds").select("seed_id, common_name, variety").execute().data
@@ -237,7 +237,7 @@ with tab6:
         seed_map = {f"{s['common_name']} ({s['variety']})": s['seed_id'] for s in seeds}
         
         with st.form("plant_form"):
-            sel_bed = st.selectbox("Select Bed", list(bed_map.keys()))
+            sel_bed = st.selectbox("Select Bed", list(bed_map.keys()) if bed_map else ["No beds created"])
             sel_seed = st.selectbox("Select Variety", list(seed_map.keys()))
             lin_ft = st.number_input("Linear Feet Used", 0.0)
             if st.form_submit_button("Plant Crop"):
@@ -248,19 +248,24 @@ with tab6:
                 }).execute()
                 st.rerun()
 
-    # 3. Row Layout View (Sorted by row_order)
+    # 3. Row Layout View (With Delete Capability)
     st.write("---")
-    beds_data = supabase.table("garden_beds").select("*, bed_plantings(linear_feet, seeds(common_name))").eq("user_id", st.session_state["user"].id).order("row_order").execute().data
+    beds_data = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, seeds(common_name))").eq("user_id", st.session_state["user"].id).order("row_order").execute().data
     
     for bed in beds_data:
         total_used = sum(p['linear_feet'] for p in bed['bed_plantings'])
-        remaining = max(0, bed['length_ft'] - total_used)
         
-        st.subheader(f"Row {bed['row_order']}: {bed['name']} ({bed['length_ft']}ft x {bed['width_ft']}ft)")
-        
-        # Simple Visual Usage Bar
-        st.progress(min(total_used / bed['length_ft'] if bed['length_ft'] > 0 else 0, 1.0))
-        st.caption(f"Used: {total_used}ft | Remaining: {remaining}ft")
-        
-        for p in bed['bed_plantings']:
-            st.write(f"- **{p['seeds']['common_name']}**: {p['linear_feet']} linear feet")
+        with st.expander(f"Row {bed['row_order']}: {bed['name']} ({bed['length_ft']}ft)"):
+            st.write(f"**Dimensions:** {bed['length_ft']}ft x {bed['width_ft']}ft")
+            st.progress(min(total_used / bed['length_ft'] if bed['length_ft'] > 0 else 0, 1.0))
+            
+            for p in bed['bed_plantings']:
+                st.write(f"- {p['seeds']['common_name']}: {p['linear_feet']}ft")
+            
+            # --- DELETE LOGIC ---
+            if st.button(f"🗑️ Delete Bed: {bed['name']}", key=f"del_{bed['id']}"):
+                # 1. Delete associated plantings first to avoid FK constraint error
+                supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute()
+                # 2. Delete the bed
+                supabase.table("garden_beds").delete().eq("id", bed['id']).execute()
+                st.rerun()
