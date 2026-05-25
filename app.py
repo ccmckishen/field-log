@@ -106,8 +106,8 @@ if st.sidebar.button("Logout"):
     del st.session_state["user"]
     st.rerun()
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗂️ Library", "📝 Field Log", "📊 Insights", "🌤️ Weather History", "👤 Profile"])
-
+# UPDATE THIS LINE
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🗂️ Library", "📝 Field Log", "📊 Insights", "🌤️ Weather History", "👤 Profile", "🗺️ Garden Planner"])
 with tab1:
     st.write("### 🗂️ Seed Library")
     if not df.empty:
@@ -246,7 +246,6 @@ with tab6:
                     line=dict(color="RoyalBlue"),
                     fillcolor="LightSkyBlue",
                 )
-                # Annotate center (using a rough center or label offset)
                 fig.add_annotation(x=0, y=0, text=bed['location_name'], showarrow=False)
 
         fig.update_xaxes(range=[0, 100], showgrid=True)
