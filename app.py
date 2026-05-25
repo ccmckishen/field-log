@@ -89,4 +89,45 @@ with tab2:
     if "user" in st.session_state and not df.empty:
         common = st.selectbox("1. Common Name:", ["-- All --"] + sorted(df['common_name'].unique().tolist()), key="log_common")
         genus_df = df if common == "-- All --" else df[df['common_name'] == common]
-        genus = st.selectbox("2. Genus:", ["-- All --"] + sorted(genus_df['genus'].unique().tolist
+        genus = st.selectbox("2. Genus:", ["-- All --"] + sorted(genus_df['genus'].unique().tolist()), key="log_genus")
+        spec_df = genus_df if genus == "-- All --" else genus_df[genus_df['genus'] == genus]
+        species = st.selectbox("3. Species:", ["-- All --"] + sorted(spec_df['species'].unique().tolist()), key="log_species")
+        final_df = spec_df if species == "-- All --" else spec_df[spec_df['species'] == species]
+        
+        with st.form("log_form", clear_on_submit=True):
+            plant_options = dict(zip(final_df['display_name'], final_df['seed_id']))
+            selected_plant = st.selectbox("4. Plant:", ["-- Choose --"] + list(plant_options.keys()))
+            action = st.selectbox("5. Action?", ["Watering", "Direct Sowed", "Harvested", "General Observation", "Weather Event"])
+            notes = st.text_area("6. Notes")
+            if st.form_submit_button("☁️ Save to Cloud"):
+                supabase.table("field_logs").insert({"seed_id": int(plant_options[selected_plant]), "action": action, "notes": notes, "user_id": str(st.session_state["user"].id)}).execute()
+                st.success("Logged!")
+                st.rerun()
+
+with tab3:
+    st.write("### 📈 Analytics")
+    if "user" in st.session_state:
+        logs = supabase.table("field_logs").select("*").eq("user_id", st.session_state["user"].id).execute()
+        if logs.data:
+            st.altair_chart(alt.Chart(pd.DataFrame(logs.data)).mark_bar().encode(x='action', y='count()'), use_container_width=True)
+
+with tab4:
+    st.write("### 🌤️ Daily Weather Log")
+    if "user" in st.session_state:
+        if st.button("🔄 Sync Historical Data"):
+            start = datetime.date(2026, 1, 1)
+            for i in range((datetime.date.today() - start).days + 1):
+                day = (start + datetime.timedelta(days=i)).isoformat()
+                if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", day).execute().data:
+                    hw = fetch_weather_historical(day)
+                    if hw:
+                        supabase.table("weather_logs").insert({
+                            "user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), 
+                            "conditions": str(hw['conditions']), "precipitation": float(hw['rain']),
+                            "wind_speed": float(hw['wind_speed']), "wind_direction": float(hw['wind_dir'])
+                        }).execute()
+            st.rerun()
+
+        hist = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
+        if hist.data:
+            st.dataframe(pd.DataFrame(hist.data), use_container_width=True)
