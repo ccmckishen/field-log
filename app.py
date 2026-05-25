@@ -31,7 +31,7 @@ def fetch_weather():
             "wind_speed": res.get('wind_speed_10m', 0.0),
             "wind_dir": res.get('wind_direction_10m', 0.0)
         }
-    except Exception: return {"temp": 0, "rain": 0, "conditions": "Clear", "wind_speed": 0, "wind_dir": 0}
+    except Exception: return {"temp": 0.0, "rain": 0.0, "conditions": "Clear", "wind_speed": 0.0, "wind_dir": 0.0}
 
 def fetch_weather_historical(date_str):
     try:
@@ -44,7 +44,8 @@ def fetch_weather_historical(date_str):
             "wind_speed": res.get('wind_speed_10m_max', [0.0])[0],
             "wind_dir": res.get('wind_direction_10m_dominant', [0.0])[0]
         }
-    except Exception: return {"temp": 0, "rain": 0, "conditions": "Clear", "wind_speed": 0, "wind_dir": 0}
+    except Exception: return {"temp": 0.0, "rain": 0.0, "conditions": "Clear", "wind_speed": 0.0, "wind_dir": 0.0}
+
 # --- 3. AUTH & LIBRARY ---
 if "user" not in st.session_state:
     session = supabase.auth.get_session()
@@ -75,7 +76,6 @@ with tab1:
         species = st.selectbox("Species:", ["-- All --"] + sorted(spec_df['species'].unique().tolist()), key="lib_species")
         final_df = spec_df if species == "-- All --" else spec_df[spec_df['species'] == species]
         
-        # Only show results if a selection is made
         if common == "-- All --" and genus == "-- All --" and species == "-- All --":
             st.info("Select a category above to view your seeds.")
         else:
@@ -113,20 +113,33 @@ with tab3:
 with tab4:
     st.write("### 🌤️ Daily Weather Log")
     if "user" in st.session_state:
+        # Automatic Log
+        today = datetime.date.today().isoformat()
+        if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", today).execute().data:
+            w = fetch_weather()
+            supabase.table("weather_logs").insert({
+                "user_id": str(st.session_state["user"].id), "date": today, "temperature": float(w['temp']), 
+                "conditions": str(w['conditions']), "precipitation": float(w['rain']),
+                "wind_speed": float(w['wind_speed']), "wind_direction": float(w['wind_dir'])
+            }).execute()
+            st.rerun()
+        
+        # Sync Historical
         if st.button("🔄 Sync Historical Data"):
             start = datetime.date(2026, 1, 1)
             for i in range((datetime.date.today() - start).days + 1):
                 day = (start + datetime.timedelta(days=i)).isoformat()
+                # Check for existing record
                 if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", day).execute().data:
                     hw = fetch_weather_historical(day)
-                    if hw:
-                        supabase.table("weather_logs").insert({
-                            "user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), 
-                            "conditions": str(hw['conditions']), "precipitation": float(hw['rain']),
-                            "wind_speed": float(hw['wind_speed']), "wind_direction": float(hw['wind_dir'])
-                        }).execute()
+                    supabase.table("weather_logs").insert({
+                        "user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), 
+                        "conditions": str(hw['conditions']), "precipitation": float(hw['rain']),
+                        "wind_speed": float(hw['wind_speed']), "wind_direction": float(hw['wind_dir'])
+                    }).execute()
             st.rerun()
 
-        hist = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
+        # Display
+        hist = supabase.table("weather_logs").select("date, temperature, conditions, precipitation, wind_speed, wind_direction").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
         if hist.data:
             st.dataframe(pd.DataFrame(hist.data), use_container_width=True)
