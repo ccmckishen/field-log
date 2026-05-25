@@ -16,7 +16,7 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# --- WEATHER HELPERS ---
+# --- 2. WEATHER HELPERS ---
 LAT, LON = "41.109", "-74.585"
 WMO_CODES = {0: "Clear", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast", 45: "Fog", 61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain"}
 
@@ -46,7 +46,7 @@ def fetch_weather_historical(date_str):
         }
     except Exception: return None
 
-# --- 2. DATA LOADING ---
+# --- 3. AUTH & LIBRARY ---
 if "user" not in st.session_state:
     session = supabase.auth.get_session()
     if session: st.session_state["user"] = session.user
@@ -62,7 +62,7 @@ def load_library():
 
 df = load_library()
 
-# --- 3. APP UI ---
+# --- 4. APP UI ---
 st.title("☁️ Cloud Field App")
 tab1, tab2, tab3, tab4 = st.tabs(["🗂️ Library", "📝 Field Log", "📊 Insights", "🌤️ Weather History"])
 
@@ -91,48 +91,4 @@ with tab3:
     if "user" in st.session_state:
         logs = supabase.table("field_logs").select("*").eq("user_id", st.session_state["user"].id).execute()
         if logs.data:
-            st.altair_chart(alt.Chart(pd.DataFrame(logs.data)).mark_bar().encode(x='action', y='count()'), use_container_width=True)
-
-with tab4:
-    st.write("### Debugging Wind Data")
-    if st.button("Test Wind API Fetch"):
-        test_w = fetch_weather()
-        st.write("Current API Raw Data:", test_w)
-        test_h = fetch_weather_historical(datetime.date.today().isoformat())
-        st.write("Historical API Raw Data:", test_h)
-    st.write("### 🌤️ Daily Weather Log")
-    if "user" in st.session_state:
-        # 1. Automatic "Lazy" Log for Today
-        today = datetime.date.today().isoformat()
-        if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", today).execute().data:
-            w = fetch_weather()
-            if w:
-                supabase.table("weather_logs").insert({
-                    "user_id": str(st.session_state["user"].id), "date": today, "temperature": float(w['temp']), 
-                    "conditions": str(w['conditions']), "precipitation": float(w['rain']),
-                    "wind_speed": float(w['wind_speed']), "wind_direction": str(w['wind_dir'])
-                }).execute()
-                st.rerun()
-        
-        # 2. Sync Historical Data
-        if st.button("🔄 Sync Historical Data (Jan 1, 2026 - Today)"):
-            start = datetime.date(2026, 1, 1)
-            for i in range((datetime.date.today() - start).days + 1):
-                day = (start + datetime.timedelta(days=i)).isoformat()
-                if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", day).execute().data:
-                    hw = fetch_weather_historical(day)
-                    if hw:
-                        supabase.table("weather_logs").insert({
-                            "user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']),
-                            "conditions": str(hw['conditions']), "precipitation": float(hw['rain']),
-                            "wind_speed": float(hw['wind_speed']), "wind_direction": str(hw['wind_dir'])
-                        }).execute()
-            st.success("Sync Complete!")
-            st.rerun()
-
-        # 3. View Data
-        hist = supabase.table("weather_logs").select("date, temperature, conditions, precipitation, wind_speed, wind_direction").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
-        if hist.data:
-            df_w = pd.DataFrame(hist.data)
-            df_w['conditions'] = df_w['conditions'].replace(['N/A', 'None'], 'Clear')
-            st.dataframe(df_w, use_container_width=True)
+            st.alta
