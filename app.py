@@ -133,9 +133,14 @@ with tab3:
     if logs.data: st.altair_chart(alt.Chart(pd.DataFrame(logs.data)).mark_bar().encode(x='action', y='count()'), use_container_width=True)
 
 with tab4:
-    loc = supabase.table("user_settings").select("lat, lon").eq("user_id", st.session_state["user"].id).single().execute()
-    if not loc.data:
-        st.warning("Please save your location in the Profile tab first.")
+    # REPLACE WITH THIS
+loc = supabase.table("user_settings").select("lat, lon").eq("user_id", st.session_state["user"].id).execute()
+
+if not loc.data or len(loc.data) == 0:
+    st.warning("Please save your location in the Profile tab first.")
+else:
+    # Safely get the first result
+    lat, lon = loc.data[0]['lat'], loc.data[0]['lon']
     else:
         lat, lon = loc.data['lat'], loc.data['lon']
         # Auto-Sync Today
