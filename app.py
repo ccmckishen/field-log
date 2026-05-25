@@ -126,7 +126,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 ])
 
 with tab1:
-    st.write("### 🗂️ My Private Seed Library")
+    st.write("### 🗂️ My Seed Library")
     
     # --- ONE-TIME ADMIN OVERRIDE ---
     unclaimed_seeds = supabase.table("seeds").select("seed_id").is_("user_id", "null").execute().data
