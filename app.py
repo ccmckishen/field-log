@@ -90,7 +90,6 @@ if "user" not in st.session_state:
     if session: st.session_state["user"] = session.user
     else: render_auth_ui()
 
-# Fetch library filtered by the logged-in user
 @st.cache_data(ttl=3600)
 def fetch_seed_library(user_id):
     try:
@@ -125,9 +124,8 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 ])
 
 with tab1:
-    st.write("### 🗂️ My Seed Library")
+    st.write("### 🗂️ My Private Seed Library")
     
-    # --- NEW: ADD SEED FORM ---
     with st.expander("➕ Add New Seed to Library"):
         with st.form("add_new_seed_form", clear_on_submit=True):
             st.write("Enter the details of your new seed below.")
@@ -155,14 +153,13 @@ with tab1:
                         "is_public": False,
                         "is_active_season": False
                     }).execute()
-                    fetch_seed_library.clear() # Clear cache to show new seed
+                    fetch_seed_library.clear()
                     st.rerun()
                 else:
                     st.error("⚠️ Common Name and Variety are required!")
                     
     st.write("---")
     
-    # 1. Manage Library Privacy (Data Editor)
     my_seeds = supabase.table("seeds").select("*").eq("user_id", st.session_state["user"].id).execute().data
     
     if my_seeds:
@@ -199,12 +196,11 @@ with tab1:
                 if current_status != original_status:
                     supabase.table("seeds").update({"is_public": current_status}).eq("seed_id", row["seed_id"]).execute()
             st.success("Privacy settings updated!")
-            fetch_seed_library.clear() # Clear cache
+            fetch_seed_library.clear()
             st.rerun()
             
         st.write("---")
         
-        # 2. View Seed Instructions (Cascading Dropdowns)
         st.write("#### 📖 View Sowing Instructions")
         if not df.empty:
             common = st.selectbox("Common Name:", ["-- All --"] + sorted(df['common_name'].unique().tolist()), key="lib_c")
@@ -433,10 +429,6 @@ with tab7:
 
     st.write("---")
     st.write("### 🗺️ Visual Row Inventory")
-    
-    def get_crop_emoji(name):
-        icons = {"Tomato": "🍅", "Carrot": "🥕", "Lettuce": "🥬", "Pepper": "🫑", "Corn": "🌽", "Cucumber": "🥒", "Bean": "🫘", "Potato": "🥔", "Onion": "🧅"}
-        return icons.get(name, "🌱")
 
     beds_data = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, spacing_inches, seeds(common_name, genus, species, botanical_subspecies, variety))").eq("user_id", st.session_state["user"].id).order("row_order").execute().data
     
@@ -451,30 +443,60 @@ with tab7:
         
         plantings = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'])
         
-        visual_row = []
-        current_pos = 0
-        for p in plantings:
-            if p['start_position_ft'] > current_pos:
-                visual_row.append(f"⚪ Empty ({p['start_position_ft'] - current_pos}ft)")
-            emoji = get_crop_emoji(p['seeds']['common_name'])
-            visual_row.append(f"{emoji} {p['seeds']['common_name']} ({p['linear_feet']}ft)")
-            current_pos = p['start_position_ft'] + p['linear_feet']
-        if current_pos < bed['length_ft']:
-            visual_row.append(f"⚪ Empty ({bed['length_ft'] - current_pos}ft)")
-        st.markdown(f"**Layout:** {' ➡️ '.join(visual_row)}")
+        # --- FIXED: PLOTLY DYNAMIC LAYOUT MAP ---
+        fig = go.Figure()
+        # Draw base background of the physical bed boundary
+        fig.add_shape(type="rect", x0=0, y0=0, x1=bed['length_ft'], y1=1, line=dict(color="LightGray"), fillcolor="white")
+        
+        # Overlay spatial blocks for assigned rows
+        block_colors = ["#2E8B57", "#3CB371", "#8FBC8F", "#66CDAA"]
+        for idx, p in enumerate(plantings):
+            start = p['start_position_ft']
+            extent = p['linear_feet']
             
+            fig.add_shape(type="rect", x0=start, y0=0.1, x1=start + extent, y1=0.9, 
+                          line=dict(color="black", width=1), fillcolor=block_colors[idx % len(block_colors)])
+            
+            fig.add_annotation(x=start + (extent / 2), y=0.5, text=p['seeds']['common_name'], 
+                               showarrow=False, font=dict(color="white", size=10))
+
+        fig.update_xaxes(range=[0, bed['length_ft']], title="Linear Feet", showgrid=True, dtick=1)
+        fig.update_yaxes(showticklabels=False, range=[0, 1])
+        fig.update_layout(height=150, margin=dict(l=10, r=10, t=10, b=30), plot_bgcolor="white")
+        st.plotly_chart(fig, use_container_width=True)
+            
+        # --- FIXED: INTERACTIVE LAYOUT SPREADSHEET ---
         if plantings:
-            display_data = []
-            for p in plantings:
-                s = p['seeds']
-                sci_name = f"{s['genus']} {s['species']} {s['botanical_subspecies'] or ''}".strip()
-                display_data.append({"Variety": f"{s['common_name']} ({s['variety']})", "Scientific": sci_name, "Pos": p['start_position_ft'], "Ft": p['linear_feet']})
-            st.table(pd.DataFrame(display_data))
+            st.write("**Editable Layout Grid:** (Modify parameters directly and click 'Save Layout')")
             
-            st.write("**Remove Crops:**")
+            grid_records = []
             for p in plantings:
-                if st.button(f"Remove {p['seeds']['common_name']} @ {p['start_position_ft']}ft", key=f"del_plant_{p['id']}"):
-                    supabase.table("bed_plantings").delete().eq("id", p['id']).execute(); st.rerun()
+                grid_records.append({
+                    "id": p['id'],
+                    "Crop (Read Only)": f"{p['seeds']['common_name']} ({p['seeds']['variety']})",
+                    "Start Pos (ft)": int(p['start_position_ft']),
+                    "Length (ft)": int(p['linear_feet']),
+                    "Spacing (in)": int(p['spacing_inches'])
+                })
+            df_grid = pd.DataFrame(grid_records)
+            
+            edited_grid = st.data_editor(df_grid, disabled=["id", "Crop (Read Only)"], hide_index=True, 
+                                         column_config={"id": None}, key=f"grid_{bed['id']}")
+            
+            col_save, col_del = st.columns([1, 3])
+            if col_save.button("💾 Save Layout", key=f"save_{bed['id']}"):
+                for index, row in edited_grid.iterrows():
+                    supabase.table("bed_plantings").update({
+                        "start_position_ft": int(row["Start Pos (ft)"]),
+                        "linear_feet": int(row["Length (ft)"]),
+                        "spacing_inches": int(row["Spacing (in)"])
+                    }).eq("id", row["id"]).execute()
+                st.rerun()
+                
+            with col_del.expander("🗑️ Remove Specific Crops"):
+                for p in plantings:
+                    if st.button(f"Remove {p['seeds']['common_name']} @ {p['start_position_ft']}ft", key=f"del_plant_{p['id']}"):
+                        supabase.table("bed_plantings").delete().eq("id", p['id']).execute(); st.rerun()
         else:
             st.info("Bed is empty.")
 
