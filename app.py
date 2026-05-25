@@ -173,6 +173,7 @@ with tab4:
         hist = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
         if hist.data:
             df_w = pd.DataFrame(hist.data)
+            df_w['conditions'] = df_w['conditions'].replace(['N/A', 'None', 'not available'], 'Clear').fillna('Clear')
             
             # This forces 'None' or empty values to be 0
             df_w['wind_speed'] = pd.to_numeric(df_w['wind_speed'], errors='coerce').fillna(0)
