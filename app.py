@@ -113,7 +113,6 @@ if st.sidebar.button("Logout"):
     del st.session_state["user"]
     st.rerun()
 
-# 8 Tabs correctly ordered
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🗂️ My Library", 
     "🌱 Season Plan", 
@@ -128,18 +127,40 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 with tab1:
     st.write("### 🗂️ My Seed Library")
     
-    # --- ONE-TIME ADMIN OVERRIDE ---
-    unclaimed_seeds = supabase.table("seeds").select("seed_id").is_("user_id", "null").execute().data
-    
-    if unclaimed_seeds:
-        st.error(f"⚠️ {len(unclaimed_seeds)} legacy seeds are stuck without an owner. API Security is blocking the app from claiming them.")
-        st.write("**To fix this, copy the code below and run it in your Supabase SQL Editor:**")
-        
-        # This dynamically inserts your actual user ID into the SQL command
-        st.code(f"UPDATE seeds SET user_id = '{st.session_state['user'].id}' WHERE user_id IS NULL;", language="sql")
-        
-        st.write("*Once you hit RUN in Supabase, come back here and refresh the page!*")
-        st.write("---")
+    # --- NEW: ADD SEED FORM ---
+    with st.expander("➕ Add New Seed to Library"):
+        with st.form("add_new_seed_form", clear_on_submit=True):
+            st.write("Enter the details of your new seed below.")
+            c1, c2 = st.columns(2)
+            new_common = c1.text_input("Common Name (e.g., Tomato) *")
+            new_variety = c2.text_input("Variety (e.g., Cherokee Purple) *")
+            
+            c3, c4, c5 = st.columns(3)
+            new_genus = c3.text_input("Genus (e.g., Solanum)")
+            new_species = c4.text_input("Species (e.g., lycopersicum)")
+            new_subsp = c5.text_input("Subspecies (optional)")
+            
+            new_instructions = st.text_area("Sowing Instructions")
+            
+            if st.form_submit_button("💾 Save to Library"):
+                if new_common and new_variety:
+                    supabase.table("seeds").insert({
+                        "user_id": str(st.session_state["user"].id),
+                        "common_name": new_common.strip(),
+                        "variety": new_variety.strip(),
+                        "genus": new_genus.strip(),
+                        "species": new_species.strip(),
+                        "botanical_subspecies": new_subsp.strip(),
+                        "sowing_instructions": new_instructions.strip(),
+                        "is_public": False,
+                        "is_active_season": False
+                    }).execute()
+                    fetch_seed_library.clear() # Clear cache to show new seed
+                    st.rerun()
+                else:
+                    st.error("⚠️ Common Name and Variety are required!")
+                    
+    st.write("---")
     
     # 1. Manage Library Privacy (Data Editor)
     my_seeds = supabase.table("seeds").select("*").eq("user_id", st.session_state["user"].id).execute().data
@@ -201,13 +222,12 @@ with tab1:
                         st.write(f"Botanical: *{row['genus']} {row['species']}*")
                         st.info(row.get('sowing_instructions', 'No instructions.'))
     else:
-        st.info("Your personal library is empty. Add some seeds to get started!")
+        st.info("Your personal library is empty. Add some seeds using the form above to get started!")
 
 with tab2:
     st.write("### 🌱 Current Season Planting List")
     st.write("Select the crops from your master library that you are growing this season.")
     
-    # Filtered by user_id
     seeds = supabase.table("seeds").select("seed_id, common_name, variety, is_active_season").eq("user_id", st.session_state["user"].id).execute().data
     
     if seeds:
@@ -369,7 +389,6 @@ with tab7:
 
     with st.expander("➕ Plant Crop"):
         beds = supabase.table("garden_beds").select("id, name").eq("user_id", st.session_state["user"].id).execute().data
-        # Filtered by user_id
         seeds = supabase.table("seeds").select("seed_id, common_name, genus, species, botanical_subspecies, variety").eq("user_id", st.session_state["user"].id).execute().data
         
         if seeds and beds:
