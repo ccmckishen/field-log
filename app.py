@@ -383,28 +383,46 @@ with tab7:
 
     st.write("---")
 
-    # --- 2. MASTER VISUAL GRID ---
+   # --- 2. MASTER VISUAL GRID (High-Precision Blueprint) ---
     raw_beds = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, seeds(common_name, variety))").eq("user_id", st.session_state["user"].id).order("name").execute().data
     
     st.write("### 🗺️ Master Garden Blueprint")
     if raw_beds:
         fig = go.Figure()
-        max_bed_len = max([b['length_ft'] for b in raw_beds])
         
-        for bed in raw_beds:
+        # Set height based on row count so they aren't squashed
+        row_height = 80
+        total_height = len(raw_beds) * row_height
+        max_bed_len = max([b['length_ft'] for b in raw_beds]) if raw_beds else 20
+        
+        for i, bed in enumerate(raw_beds):
             y_pos = bed['name']
-            fig.add_trace(go.Bar(x=[bed['length_ft']], y=[y_pos], orientation='h', marker=dict(color='white', line=dict(color='gray', width=1)), hoverinfo='none', showlegend=False))
+            
+            # 1. Draw the row boundary (The Bed Container)
+            fig.add_shape(type="rect", x0=0, y0=i-0.4, x1=bed['length_ft'], y1=i+0.4,
+                          line=dict(color="black", width=2), fillcolor="white")
+            
+            # 2. Draw each crop as an exact geometric shape
             for p in bed['bed_plantings']:
-                fig.add_trace(go.Bar(
-                    x=[p['linear_feet']], y=[y_pos], base=p['start_position_ft'], orientation='h',
-                    marker=dict(color='#2E8B57', line=dict(color='white', width=1)),
-                    text=p['seeds']['common_name'], textposition='inside', insidetextanchor='middle',
-                    hoverinfo='text', hovertext=f"{p['seeds']['common_name']} ({p['seeds']['variety']})",
-                    showlegend=False
-                ))
-        fig.update_layout(height=40*len(raw_beds)+50, margin=dict(l=10, r=10, t=10, b=30), xaxis=dict(range=[0, max_bed_len], dtick=1, gridcolor='LightGray', title="Feet"), yaxis=dict(autorange="reversed", gridcolor='LightGray'), plot_bgcolor='white')
-        st.plotly_chart(fig, use_container_width=True)
+                fig.add_shape(type="rect", 
+                              x0=p['start_position_ft'], y0=i-0.3, 
+                              x1=p['start_position_ft'] + p['linear_feet'], y1=i+0.3,
+                              line=dict(color="black", width=1), fillcolor="#2E8B57")
+                
+                # Add text label for the crop
+                fig.add_annotation(x=p['start_position_ft'] + (p['linear_feet']/2), y=i,
+                                   text=p['seeds']['common_name'], showarrow=False,
+                                   font=dict(color="white", size=10))
 
+        # Final Formatting for "Spatial Perfection"
+        fig.update_layout(
+            height=total_height,
+            margin=dict(l=100, r=20, t=20, b=50),
+            xaxis=dict(range=[-1, max_bed_len + 1], dtick=1, gridcolor='LightGray', title="Feet", side="top"),
+            yaxis=dict(tickvals=list(range(len(raw_beds))), ticktext=[b['name'] for b in raw_beds], autorange="reversed"),
+            plot_bgcolor='white'
+        )
+        st.plotly_chart(fig, use_container_width=True)
     # --- 3. SEPARATED BED EDITORS ---
     st.write("### 📑 Row Ledgers")
     for bed in raw_beds:
