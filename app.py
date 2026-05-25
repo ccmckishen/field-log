@@ -248,9 +248,16 @@ with tab6:
         seeds = supabase.table("seeds").select("seed_id, common_name, genus, species, botanical_subspecies, variety").execute().data
         
         if seeds and beds:
-            search = st.text_input("🔍 Quick Search (Name or Variety)", "")
-            # Filter logic: if search exists, filter; otherwise keep all
-            active_seeds = [s for s in seeds if search.lower() in s['common_name'].lower() or search.lower() in s['variety'].lower()] if search else seeds
+            search = st.text_input("🔍 Quick Search (Common, Scientific, or Variety)", "").lower()
+            
+            # Expanded Filter Logic: Searches across common, variety, genus, and species
+            def matches_search(s, query):
+                if not query: return True
+                # Safely combine text fields to avoid errors if a field is empty
+                searchable_text = f"{s.get('common_name', '')} {s.get('variety', '')} {s.get('genus', '')} {s.get('species', '')} {s.get('botanical_subspecies', '')}".lower()
+                return query in searchable_text
+
+            active_seeds = [s for s in seeds if matches_search(s, search)]
 
             def get_sci_name(s): return f"{s['genus']} {s['species']} {s['botanical_subspecies'] or ''}".strip()
             
@@ -302,4 +309,32 @@ with tab6:
             supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute(); supabase.table("garden_beds").delete().eq("id", bed['id']).execute(); st.rerun()
         
         # Visual Layout
-plantings = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'])
+        plantings = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'])
+        
+        visual_row = []
+        current_pos = 0
+        for p in plantings:
+            if p['start_position_ft'] > current_pos:
+                visual_row.append(f"⚪ Empty ({p['start_position_ft'] - current_pos}ft)")
+            emoji = get_crop_emoji(p['seeds']['common_name'])
+            visual_row.append(f"{emoji} {p['seeds']['common_name']} ({p['linear_feet']}ft)")
+            current_pos = p['start_position_ft'] + p['linear_feet']
+        if current_pos < bed['length_ft']:
+            visual_row.append(f"⚪ Empty ({bed['length_ft'] - current_pos}ft)")
+        st.markdown(f"**Layout:** {' ➡️ '.join(visual_row)}")
+            
+        # Individual Crop Management
+        if plantings:
+            display_data = []
+            for p in plantings:
+                s = p['seeds']
+                sci_name = f"{s['genus']} {s['species']} {s['botanical_subspecies'] or ''}".strip()
+                display_data.append({"Variety": f"{s['common_name']} ({s['variety']})", "Scientific": sci_name, "Pos": p['start_position_ft'], "Ft": p['linear_feet']})
+            st.table(pd.DataFrame(display_data))
+            
+            st.write("**Remove Crops:**")
+            for p in plantings:
+                if st.button(f"Remove {p['seeds']['common_name']} @ {p['start_position_ft']}ft", key=f"del_plant_{p['id']}"):
+                    supabase.table("bed_plantings").delete().eq("id", p['id']).execute(); st.rerun()
+        else:
+            st.info("Bed is empty.")
