@@ -212,43 +212,55 @@ with tab5:
             st.success("Location saved!")
         else: st.error("Invalid ZIP Code.")
 with tab6:
-    st.write("### 🗺️ Visual Garden Planner (Curved & Custom)")
+    st.write("### 🏗️ Garden Designer")
     
-    # 1. Input Form
-    with st.expander("➕ Add/Modify Garden Bed"):
-        seeds = supabase.table("seeds").select("seed_id, common_name, variety").execute().data
-        seed_opts = {f"{s['common_name']} - {s['variety']}": s['seed_id'] for s in seeds}
-        
+    col_a, col_b = st.columns(2)
+    
+    # 1. Manage Beds
+    with col_a:
+        st.write("#### 1. Define Beds")
         with st.form("bed_form"):
-            name = st.text_input("Bed Name")
-            path = st.text_input("SVG Path String", help="Get this string from an SVG path builder tool.")
-            plant_sel = st.selectbox("Plant", list(seed_opts.keys()))
-            
-            if st.form_submit_button("Update Map"):
-                supabase.table("garden_layout").upsert({
-                    "user_id": str(st.session_state["user"].id),
-                    "location_name": name,
-                    "seed_id": seed_opts[plant_sel],
-                    "svg_path": path
-                }).execute()
+            b_name = st.text_input("Bed Name")
+            b_w = st.number_input("Length (ft)", 1)
+            b_h = st.number_input("Width (ft)", 1)
+            b_x = st.number_input("X Coord", 0)
+            b_y = st.number_input("Y Coord", 0)
+            if st.form_submit_button("Create/Update Bed"):
+                supabase.table("garden_beds").upsert({"user_id": str(st.session_state["user"].id), "name": b_name, "width": b_w, "height": b_h, "x": b_x, "y": b_y}).execute()
                 st.rerun()
 
-    # 2. Render Plotly Map
-    layout = supabase.table("garden_layout").select("location_name, svg_path, seeds(common_name)").eq("user_id", st.session_state["user"].id).execute()
-    
-    if layout.data:
-        fig = go.Figure()
+    # 2. Add Plantings
+    with col_b:
+        st.write("#### 2. Add Crops to Bed")
+        beds = supabase.table("garden_beds").select("id, name").eq("user_id", st.session_state["user"].id).execute().data
+        seeds = supabase.table("seeds").select("seed_id, common_name, variety").execute().data
         
-        for bed in layout.data:
-            if bed.get('svg_path'):
-                fig.add_shape(type="path",
-                    path=bed['svg_path'],
-                    line=dict(color="RoyalBlue"),
-                    fillcolor="LightSkyBlue",
-                )
-                fig.add_annotation(x=0, y=0, text=bed['location_name'], showarrow=False)
+        bed_map = {b['name']: b['id'] for b in beds}
+        seed_map = {f"{s['common_name']} ({s['variety']})": s['seed_id'] for s in seeds}
+        
+        with st.form("plant_form"):
+            sel_bed = st.selectbox("Select Bed", list(bed_map.keys()))
+            sel_seed = st.selectbox("Select Variety", list(seed_map.keys()))
+            note = st.text_input("Row Notes/Specifics")
+            if st.form_submit_button("Plant Crop"):
+                supabase.table("bed_plantings").insert({"bed_id": bed_map[sel_bed], "seed_id": seed_map[sel_seed], "variety_note": note}).execute()
+                st.rerun()
 
-        fig.update_xaxes(range=[0, 100], showgrid=True)
-        fig.update_yaxes(range=[0, 100], showgrid=True)
-        fig.update_layout(height=500, plot_bgcolor="white", title="Garden Layout")
-        st.plotly_chart(fig, use_container_width=True)
+    # 3. Visualization
+    st.write("---")
+    beds_data = supabase.table("garden_beds").select("*, bed_plantings(variety_note, seeds(common_name))").eq("user_id", st.session_state["user"].id).execute().data
+    
+    fig = go.Figure()
+    for bed in beds_data:
+        # Build hover text listing all plants in the bed
+        plants = [f"{p['seeds']['common_name']} - {p['variety_note']}" for p in bed['bed_plantings']]
+        hover_text = "<br>".join(plants) if plants else "Empty"
+        
+        fig.add_shape(type="rect", x0=bed['x'], y0=bed['y'], x1=bed['x']+bed['width'], y1=bed['y']+bed['height'],
+                      line=dict(color="RoyalBlue"), fillcolor="LightSkyBlue", opacity=0.5)
+        fig.add_annotation(x=bed['x'] + (bed['width']/2), y=bed['y'] + (bed['height']/2), 
+                           text=f"{bed['name']}<br><sub>{hover_text}</sub>", showarrow=False)
+
+    fig.update_xaxes(range=[0, 20], showgrid=True); fig.update_yaxes(range=[0, 20], showgrid=True)
+    fig.update_layout(height=400, plot_bgcolor="white", title="Garden Layout")
+    st.plotly_chart(fig, use_container_width=True)
