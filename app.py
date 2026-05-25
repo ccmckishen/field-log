@@ -6,7 +6,6 @@ import altair as alt
 import requests
 import time
 import plotly.graph_objects as go
-import pandas as pd
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="Cloud Field App", page_icon="☁️", layout="wide")
@@ -67,6 +66,7 @@ def fetch_weather_historical(lat, lon, date_str):
     except Exception: pass
 
     return {**res_om, **res_vc}
+
 # --- 3. AUTH & LIBRARY ---
 def render_auth_ui():
     st.title("🔐 Login / Sign Up")
@@ -89,16 +89,22 @@ if "user" not in st.session_state:
     if session: st.session_state["user"] = session.user
     else: render_auth_ui()
 
+# Renamed to bust the cache and updated columns
 @st.cache_data(ttl=3600)
-def load_library():
+def fetch_seed_library():
     try:
-        response = supabase.table("seeds").select("seed_id, genus, species, common_name, variety, sowing_instructions").execute()
-        df = pd.DataFrame(response.data)
-        df['display_name'] = df['common_name'] + " - " + df['variety'] + " (" + df['genus'] + " " + df['species'] + ")"
-        return df
+        response = supabase.table("seeds").select("seed_id, genus, species, botanical_subspecies, common_name, variety, sowing_instructions").execute()
+        if response.data:
+            df = pd.DataFrame(response.data)
+            df['botanical_subspecies'] = df['botanical_subspecies'].fillna('')
+            # Safely build display name with new schema
+            df['display_name'] = df['common_name'] + " - " + df['variety'] + " (" + df['genus'] + " " + df['species'] + " " + df['botanical_subspecies'] + ")"
+            df['display_name'] = df['display_name'].str.replace(" )", ")").str.replace("  ", " ")
+            return df
+        return pd.DataFrame()
     except: return pd.DataFrame()
 
-df = load_library()
+df = fetch_seed_library()
 
 # --- 4. APP UI ---
 st.title("☁️ Cloud Field App")
@@ -107,8 +113,8 @@ if st.sidebar.button("Logout"):
     del st.session_state["user"]
     st.rerun()
 
-# UPDATE THIS LINE
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["🗂️ Library", "🌱 Season Plan", "📝 Field Log", "📊 Insights", "🌤️ Weather History", "👤 Profile", "🗺️ Garden Planner"])
+
 with tab1:
     st.write("### 🗂️ Seed Library")
     if not df.empty:
@@ -126,22 +132,21 @@ with tab1:
                 with st.expander(f"🌿 {row['common_name']} - {row['variety']}"):
                     st.write(f"Botanical: *{row['genus']} {row['species']}*")
                     st.info(row.get('sowing_instructions', 'No instructions.'))
+
 with tab2:
     st.write("### 🌱 Current Season Planting List")
     st.write("Select the crops from your master library that you are growing this season.")
     
-    # Fetch seed data including our new column
     seeds = supabase.table("seeds").select("seed_id, common_name, variety, is_active_season").execute().data
     
     if seeds:
-        df = pd.DataFrame(seeds)
+        season_df = pd.DataFrame(seeds)
         
-        # 1. Interactive Checklist
         st.write("**1. Select Active Seeds:**")
         edited_df = st.data_editor(
-            df,
+            season_df,
             column_config={
-                "seed_id": None, # Hides the database ID from the UI
+                "seed_id": None, 
                 "common_name": "Common Name",
                 "variety": "Variety",
                 "is_active_season": st.column_config.CheckboxColumn(
@@ -150,16 +155,14 @@ with tab2:
                     default=False,
                 )
             },
-            disabled=["common_name", "variety"], # Prevents accidental renaming of the seeds here
+            disabled=["common_name", "variety"],
             hide_index=True,
             use_container_width=True,
             key="season_editor"
         )
         
-        # Save Button for the Checklist
         if st.button("💾 Save Season List"):
             for index, row in edited_df.iterrows():
-                # Only update the database if the status changed to save API calls
                 original_status = next(s['is_active_season'] for s in seeds if s['seed_id'] == row['seed_id'])
                 if row['is_active_season'] != original_status:
                     supabase.table("seeds").update({"is_active_season": row["is_active_season"]}).eq("seed_id", row["seed_id"]).execute()
@@ -168,12 +171,10 @@ with tab2:
             
         st.write("---")
         
-        # 2. Clean Summary View
         st.write("### 📋 Your Active Roster")
         active_seeds = [s for s in seeds if s.get('is_active_season') == True]
         
         if active_seeds:
-            # Create a clean dataframe for display
             display_df = pd.DataFrame(active_seeds)[["common_name", "variety"]]
             display_df.columns = ["Crop", "Variety"]
             st.table(display_df)
@@ -214,7 +215,6 @@ with tab5:
         lat, lon = loc.data[0]['lat'], loc.data[0]['lon']
         today = datetime.date.today().isoformat()
         
-        # Auto-log today
         if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", today).execute().data:
             w = fetch_weather(lat, lon)
             supabase.table("weather_logs").insert({
@@ -224,14 +224,13 @@ with tab5:
             }).execute()
             st.rerun()
         
-        # Sync Historical
         if st.button("🔄 Sync Historical Data"):
             start = datetime.date(2026, 1, 1)
             for i in range((datetime.date.today() - start).days + 1):
                 day = (start + datetime.timedelta(days=i)).isoformat()
                 if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", day).execute().data:
                     hw = fetch_weather_historical(lat, lon, day)
-                    time.sleep(1.2) # Forces pause to keep API connection alive
+                    time.sleep(1.2) 
                     supabase.table("weather_logs").insert({
                         "user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), 
                         "conditions": str(hw['conditions']), "precipitation": float(hw['rain']),
@@ -239,7 +238,6 @@ with tab5:
                     }).execute()
             st.rerun()
 
-        # Display Data
         hist = supabase.table("weather_logs").select("date, temperature, conditions, precipitation, wind_speed").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
         
         if hist.data:
@@ -247,7 +245,6 @@ with tab5:
             df_w['conditions'] = df_w['conditions'].replace(['N/A', 'None', 'not available'], 'Clear').fillna('Clear')
             df_w['wind_speed'] = df_w['wind_speed'].fillna(0)
             
-            # Graphs
             st.write("#### 🌡️ Temperature (°F)")
             st.altair_chart(alt.Chart(df_w).mark_line(point=True).encode(x='date', y='temperature', tooltip=['date', 'temperature']), use_container_width=True)
             
@@ -258,6 +255,7 @@ with tab5:
             st.altair_chart(alt.Chart(df_w).mark_line(color='orange', point=True).encode(x='date', y='wind_speed', tooltip=['date', 'wind_speed']), use_container_width=True)
             
             st.dataframe(df_w, use_container_width=True, hide_index=True)
+
 with tab6:
     st.write("### 👤 Location Settings")
     zip_code = st.text_input("Enter your ZIP Code:")
@@ -267,22 +265,20 @@ with tab6:
             supabase.table("user_settings").upsert({"user_id": str(st.session_state["user"].id), "lat": lat, "lon": lon}).execute()
             st.success("Location saved!")
         else: st.error("Invalid ZIP Code.")
+
 with tab7:
     st.write("### 🌿 Garden Layout & Planner")
 
-    # --- 1. SETUP SESSION STATE ---
     if 'edit_bed_id' not in st.session_state:
         st.session_state.edit_bed_id = None
         st.session_state.edit_data = None
 
-    # --- 2. ADD/EDIT BED FORM ---
     with st.expander("➕ Define/Update Bed", expanded=(st.session_state.edit_bed_id is not None)):
         with st.form("bed_form"):
             default = st.session_state.edit_data if st.session_state.edit_data else {"name":"", "length_ft":0, "width_ft":0, "row_order":1}
             b_name = st.text_input("Bed Name", value=default['name'])
             c1, c2 = st.columns(2)
             
-            # Updated to increment by 1 (Integers)
             b_len = c1.number_input("Length (ft)", value=int(float(default['length_ft'])), step=1)
             b_wid = c2.number_input("Width (ft)", value=int(float(default['width_ft'])), step=1)
             b_ord = st.number_input("Row Order (1, 2, 3...)", value=int(default['row_order']), step=1)
@@ -300,7 +296,6 @@ with tab7:
             if st.session_state.edit_bed_id and c2.form_submit_button("Cancel"):
                 st.session_state.edit_bed_id = None; st.session_state.edit_data = None; st.rerun()
 
-    # --- 3. ADD PLANTING (Search + Cascading) ---
     with st.expander("➕ Plant Crop"):
         beds = supabase.table("garden_beds").select("id, name").eq("user_id", st.session_state["user"].id).execute().data
         seeds = supabase.table("seeds").select("seed_id, common_name, genus, species, botanical_subspecies, variety").execute().data
@@ -332,7 +327,6 @@ with tab7:
                     c1, c2, c3, c4 = st.columns(4)
                     sel_bed = c1.selectbox("Bed", [b['name'] for b in beds])
                     
-                    # Updated to integers and increment by 1
                     lin_ft = c2.number_input("Length (ft)", min_value=0, value=0, step=1)
                     start_pos = c3.number_input("Start Pos (ft)", min_value=0, value=0, step=1)
                     spacing = c4.number_input("Spacing (in)", min_value=0, value=0, step=1)
@@ -346,7 +340,6 @@ with tab7:
         else:
             st.info("Add beds and seeds to your library first.")
 
-    # --- 4. VISUAL ROW DIAGRAM ---
     st.write("---")
     st.write("### 🗺️ Visual Row Inventory")
     
@@ -359,14 +352,12 @@ with tab7:
     for bed in beds_data:
         st.subheader(f"Row {bed['row_order']}: {bed['name']} ({bed['length_ft']}ft)")
         
-        # Bed Controls
         c1, c2 = st.columns(2)
         if c1.button("✏️ Edit Bed", key=f"edit_{bed['id']}"):
             st.session_state.edit_bed_id = bed['id']; st.session_state.edit_data = bed; st.rerun()
         if c2.button("🗑️ Delete Entire Bed", key=f"del_{bed['id']}"):
             supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute(); supabase.table("garden_beds").delete().eq("id", bed['id']).execute(); st.rerun()
         
-        # Visual Layout
         plantings = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'])
         
         visual_row = []
@@ -381,7 +372,6 @@ with tab7:
             visual_row.append(f"⚪ Empty ({bed['length_ft'] - current_pos}ft)")
         st.markdown(f"**Layout:** {' ➡️ '.join(visual_row)}")
             
-        # Individual Crop Management
         if plantings:
             display_data = []
             for p in plantings:
