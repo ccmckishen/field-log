@@ -420,7 +420,8 @@ with tab7:
         with st.expander(f"Edit Crops in {bed['name']}"):
             # Quick Add Form
             # --- QUICK ADD SECTION (Variety-First Search) ---
-           st.write("#### ⚡ Quick Add to this row")
+          # --- QUICK ADD SECTION (Auto-Calc & Directionality) ---
+            st.write("#### ⚡ Quick Add to this row")
             
             # Find where the last crop ended
             last_planting = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'], reverse=True)
