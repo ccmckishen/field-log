@@ -212,8 +212,8 @@ with tab5:
             st.success("Location saved!")
         else: st.error("Invalid ZIP Code.")
 with tab6:
-    st.write("### 📏 Row-Based Garden Planner")
-    
+    st.write("### 🌿 Garden Layout & Planner")
+
     # --- 1. SETUP SESSION STATE ---
     if 'edit_bed_id' not in st.session_state:
         st.session_state.edit_bed_id = None
@@ -223,11 +223,10 @@ with tab6:
     with st.expander("➕ Define/Update Bed", expanded=(st.session_state.edit_bed_id is not None)):
         with st.form("bed_form"):
             default = st.session_state.edit_data if st.session_state.edit_data else {"name":"", "length_ft":0.0, "width_ft":0.0, "row_order":1}
-            
             b_name = st.text_input("Bed Name", value=default['name'])
-            col1, col2 = st.columns(2)
-            b_len = col1.number_input("Length (ft)", value=float(default['length_ft']))
-            b_wid = col2.number_input("Width (ft)", value=float(default['width_ft']))
+            c1, c2 = st.columns(2)
+            b_len = c1.number_input("Length (ft)", value=float(default['length_ft']))
+            b_wid = c2.number_input("Width (ft)", value=float(default['width_ft']))
             b_ord = st.number_input("Row Order (1, 2, 3...)", value=int(default['row_order']))
             
             submit_label = "Update Bed" if st.session_state.edit_bed_id else "Create Bed"
@@ -236,35 +235,24 @@ with tab6:
                 data = {"user_id": str(st.session_state["user"].id), "name": b_name, "length_ft": b_len, "width_ft": b_wid, "row_order": b_ord}
                 if st.session_state.edit_bed_id:
                     supabase.table("garden_beds").update(data).eq("id", st.session_state.edit_bed_id).execute()
-                    st.session_state.edit_bed_id = None
-                    st.session_state.edit_data = None
+                    st.session_state.edit_bed_id = None; st.session_state.edit_data = None
                 else:
                     supabase.table("garden_beds").insert(data).execute()
                 st.rerun()
             if st.session_state.edit_bed_id and c2.form_submit_button("Cancel"):
-                st.session_state.edit_bed_id = None
-                st.session_state.edit_data = None
-                st.rerun()
+                st.session_state.edit_bed_id = None; st.session_state.edit_data = None; st.rerun()
 
     # --- 3. ADD PLANTING (CASCADING DROPDOWNS) ---
-    with st.expander("➕ Plant Crop (Common -> Scientific -> Variety)"):
+    with st.expander("➕ Plant Crop"):
         beds = supabase.table("garden_beds").select("id, name").eq("user_id", st.session_state["user"].id).execute().data
         seeds = supabase.table("seeds").select("seed_id, common_name, genus, species, botanical_subspecies, variety").execute().data
         
         if seeds and beds:
-            # Helper: Format scientific name
-            def get_sci_name(s):
-                return f"{s['genus']} {s['species']} {s['botanical_subspecies'] or ''}".strip()
-            
-            # Tier 1: Common Name
+            def get_sci_name(s): return f"{s['genus']} {s['species']} {s['botanical_subspecies'] or ''}".strip()
             crop_names = sorted(list(set([s['common_name'] for s in seeds])))
             sel_crop = st.selectbox("1. Common Name", crop_names, key="c_sel")
-            
-            # Tier 2: Scientific Name
             sci_names = sorted(list(set([get_sci_name(s) for s in seeds if s['common_name'] == sel_crop])))
             sel_scientific = st.selectbox("2. Scientific Name", sci_names, key="l_sel")
-            
-            # Tier 3: Variety
             varieties = [s for s in seeds if s['common_name'] == sel_crop and get_sci_name(s) == sel_scientific]
             var_map = {f"{s['variety']}": s['seed_id'] for s in varieties}
             sel_var = st.selectbox("3. Variety", list(var_map.keys()), key="v_sel")
@@ -275,52 +263,49 @@ with tab6:
                 lin_ft = c2.number_input("Length (ft)", 0.0)
                 start_pos = c3.number_input("Start Pos (ft)", 0.0)
                 spacing = c4.number_input("Spacing (in)", 0.0)
-                
                 if st.form_submit_button("Confirm Planting"):
                     bed_id = next(b['id'] for b in beds if b['name'] == sel_bed)
-                    supabase.table("bed_plantings").insert({
-                        "bed_id": bed_id, 
-                        "seed_id": var_map[sel_var], 
-                        "linear_feet": lin_ft,
-                        "start_position_ft": start_pos,
-                        "spacing_inches": spacing
-                    }).execute()
+                    supabase.table("bed_plantings").insert({"bed_id": bed_id, "seed_id": var_map[sel_var], "linear_feet": lin_ft, "start_position_ft": start_pos, "spacing_inches": spacing}).execute()
                     st.rerun()
-        else:
-            st.info("Add beds and seeds to your library first.")
 
-    # --- 4. VISUAL ROW VIEW & MANAGEMENT ---
+    # --- 4. VISUAL ROW DIAGRAM ---
     st.write("---")
-    st.write("### 📋 Row Inventory")
+    st.write("### 🗺️ Visual Row Inventory")
+    
+    # Helper to map crops to emojis
+    def get_crop_emoji(name):
+        icons = {"Tomato": "🍅", "Carrot": "🥕", "Lettuce": "🥬", "Pepper": "🫑", "Corn": "🌽", "Cucumber": "🥒", "Bean": "🫘", "Potato": "🥔", "Onion": "🧅"}
+        return icons.get(name, "🌱")
+
     beds_data = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, spacing_inches, seeds(common_name, genus, species, botanical_subspecies, variety))").eq("user_id", st.session_state["user"].id).order("row_order").execute().data
     
     for bed in beds_data:
         st.subheader(f"Row {bed['row_order']}: {bed['name']} ({bed['length_ft']}ft)")
         
+        # Build Visual Diagram
+        plantings = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'])
+        
+        # Draw the "Bed"
+        visual_row = []
+        current_pos = 0
+        for p in plantings:
+            # Add Empty Space before plant
+            if p['start_position_ft'] > current_pos:
+                visual_row.append(f"⚪ Empty ({p['start_position_ft'] - current_pos}ft)")
+            # Add Plant
+            emoji = get_crop_emoji(p['seeds']['common_name'])
+            visual_row.append(f"{emoji} {p['seeds']['common_name']} ({p['linear_feet']}ft)")
+            current_pos = p['start_position_ft'] + p['linear_feet']
+        
+        # Add remaining space
+        if current_pos < bed['length_ft']:
+            visual_row.append(f"⚪ Empty ({bed['length_ft'] - current_pos}ft)")
+            
+        st.markdown(f"**Layout:** {' ➡️ '.join(visual_row)}")
+        
         # Action Buttons
         col_b1, col_b2, col_b3 = st.columns([1, 1, 4])
-        if col_b1.button("✏️ Edit Bed", key=f"edit_{bed['id']}"):
-            st.session_state.edit_bed_id = bed['id']
-            st.session_state.edit_data = bed
-            st.rerun()
-        if col_b2.button("🗑️ Delete Bed", key=f"del_{bed['id']}"):
-            supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute()
-            supabase.table("garden_beds").delete().eq("id", bed['id']).execute()
-            st.rerun()
-        
-        if bed['bed_plantings']:
-            sorted_plantings = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'])
-            display_data = []
-            for p in sorted_plantings:
-                s = p['seeds']
-                sci_name = f"{s['genus']} {s['species']} {s['botanical_subspecies'] or ''}".strip()
-                display_data.append({
-                    "Pos (ft)": p['start_position_ft'],
-                    "Variety": f"{s['common_name']} ({s['variety']})",
-                    "Scientific": sci_name,
-                    "Length": p['linear_feet'],
-                    "Spacing": f"{p['spacing_inches']}in"
-                })
-            st.table(pd.DataFrame(display_data))
-        else:
-            st.info("Bed is empty.")
+        if col_b1.button("✏️ Edit", key=f"edit_{bed['id']}"):
+            st.session_state.edit_bed_id = bed['id']; st.session_state.edit_data = bed; st.rerun()
+        if col_b2.button("🗑️ Delete", key=f"del_{bed['id']}"):
+            supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute(); supabase.table("garden_beds").delete().eq("id", bed['id']).execute(); st.rerun()
