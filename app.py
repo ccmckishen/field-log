@@ -163,7 +163,7 @@ with tab4:
             supabase.table("weather_logs").insert({
                 "user_id": str(st.session_state["user"].id), "date": today, "temperature": float(w['temp']), 
                 "conditions": str(w['conditions']), "precipitation": float(w['rain']),
-                "wind_speed": float(w['wind_speed']), "wind_direction": float(w['wind_dir'])
+                "wind_speed": float(w['wind_speed'])
             }).execute()
             st.rerun()
         
@@ -177,18 +177,17 @@ with tab4:
                     supabase.table("weather_logs").insert({
                         "user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), 
                         "conditions": str(hw['conditions']), "precipitation": float(hw['rain']),
-                        "wind_speed": float(hw['wind_speed']), "wind_direction": float(hw['wind_dir'])
+                        "wind_speed": float(hw['wind_speed'])
                     }).execute()
             st.rerun()
 
         # Display Refined Data
-        hist = supabase.table("weather_logs").select("date, temperature, conditions, precipitation, wind_speed, wind_direction").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
+        hist = supabase.table("weather_logs").select("date, temperature, conditions, precipitation, wind_speed").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
         
         if hist.data:
             df_w = pd.DataFrame(hist.data)
-            # Force cleanup of conditions and wind data
             df_w['conditions'] = df_w['conditions'].replace(['N/A', 'None', 'not available'], 'Clear').fillna('Clear')
-            df_w[['wind_speed', 'wind_direction']] = df_w[['wind_speed', 'wind_direction']].fillna(0)
+            df_w['wind_speed'] = df_w['wind_speed'].fillna(0)
             
             # Graphs
             st.write("#### 🌡️ Temperature (°F)")
@@ -200,7 +199,6 @@ with tab4:
             st.write("#### 🌬️ Wind Speed (mph)")
             st.altair_chart(alt.Chart(df_w).mark_line(color='orange', point=True).encode(x='date', y='wind_speed', tooltip=['date', 'wind_speed']), use_container_width=True)
             
-            # Data Table
             st.dataframe(df_w, use_container_width=True, hide_index=True)
 with tab5:
     st.write("### 👤 Location Settings")
