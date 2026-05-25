@@ -420,35 +420,33 @@ with tab7:
         with st.expander(f"Edit Crops in {bed['name']}"):
             # Quick Add Form
             # --- QUICK ADD SECTION (Variety-First Search) ---
-            st.write("#### ⚡ Quick Add to this row")
+           st.write("#### ⚡ Quick Add to this row")
+            
+            # Find where the last crop ended
+            last_planting = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'], reverse=True)
+            default_start = (last_planting[0]['start_position_ft'] + last_planting[0]['linear_feet']) if last_planting else 0
+            
             with st.form(f"quick_add_{bed['id']}", clear_on_submit=True):
-                col_a, col_b, col_c = st.columns([3, 1, 1])
+                col_a, col_b, col_c, col_d = st.columns([2, 1, 1, 1])
                 
                 # Fetch seeds
                 all_seeds = supabase.table("seeds").select("seed_id, common_name, variety").eq("user_id", st.session_state["user"].id).execute().data
+                search_query = col_a.text_input("Variety", placeholder="Type...", key=f"search_{bed['id']}")
+                filtered = [s for s in all_seeds if search_query.lower() in s['variety'].lower() or search_query.lower() in s['common_name'].lower()]
+                s_map = {f"{s['variety']} ({s['common_name']})": s['seed_id'] for s in filtered}
+                sel_s = col_a.selectbox("Select", list(s_map.keys()), key=f"sel_{bed['id']}", label_visibility="collapsed")
                 
-                # Search by Variety primarily
-                search_query = col_a.text_input("Search Variety", placeholder="Type variety name...", key=f"search_{bed['id']}")
-                
-                # Filter: Searches variety first, then common name
-                filtered_seeds = [
-                    s for s in all_seeds 
-                    if search_query.lower() in s['variety'].lower() or search_query.lower() in s['common_name'].lower()
-                ]
-                
-                # Format for quick selection: "Variety (Common Name)"
-                s_map = {f"{s['variety']} ({s['common_name']})": s['seed_id'] for s in filtered_seeds}
-                
-                sel_s = col_a.selectbox("Select Result", list(s_map.keys()), key=f"sel_{bed['id']}", label_visibility="collapsed")
-                
-                f_ft = col_b.number_input("Feet", value=1, step=1, key=f"len_{bed['id']}")
-                pos = col_c.number_input("Start", value=0, step=1, key=f"pos_{bed['id']}")
+                direction = col_b.radio("Dir", ["L->R", "R->L"], index=0, key=f"dir_{bed['id']}")
+                f_ft = col_c.number_input("Feet", value=1, step=1, key=f"len_{bed['id']}")
+                pos = col_d.number_input("Start", value=int(default_start), step=1, key=f"pos_{bed['id']}")
                 
                 if st.form_submit_button("Add Crop"):
                     if sel_s:
+                        # If Right-to-Left, start = (Bed Length - Start Pos - Feet)
+                        start_val = pos if direction == "L->R" else (bed['length_ft'] - pos - f_ft)
                         supabase.table("bed_plantings").insert({
                             "bed_id": bed['id'], "seed_id": s_map[sel_s],
-                            "linear_feet": f_ft, "start_position_ft": pos
+                            "linear_feet": f_ft, "start_position_ft": start_val
                         }).execute()
                         st.rerun()
             # Spreadsheet Editor
