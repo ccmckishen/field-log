@@ -143,29 +143,39 @@ with tab3:
 
 with tab4:
     st.write("### 🌤️ Daily Weather Log")
-    today = datetime.date.today().isoformat()
-    if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", today).execute().data:
-        w = fetch_weather()
-        supabase.table("weather_logs").insert({
-            "user_id": str(st.session_state["user"].id), "date": today, "temperature": float(w['temp']), 
-            "conditions": str(w['conditions']), "precipitation": float(w['rain']),
-            "wind_speed": float(w['wind_speed']), "wind_direction": float(w['wind_dir'])
-        }).execute()
-        st.rerun()
-    
-    if st.button("🔄 Sync Historical Data"):
-        start = datetime.date(2026, 1, 1)
-        for i in range((datetime.date.today() - start).days + 1):
-            day = (start + datetime.timedelta(days=i)).isoformat()
-            if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", day).execute().data:
-                hw = fetch_weather_historical(day)
-                supabase.table("weather_logs").insert({
-                    "user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), 
-                    "conditions": str(hw['conditions']), "precipitation": float(hw['rain']),
-                    "wind_speed": float(hw['wind_speed']), "wind_direction": float(hw['wind_dir'])
-                }).execute()
-        st.rerun()
+    if "user" in st.session_state:
+        # Automatic Log
+        today = datetime.date.today().isoformat()
+        if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", today).execute().data:
+            w = fetch_weather()
+            supabase.table("weather_logs").insert({
+                "user_id": str(st.session_state["user"].id), "date": today, "temperature": float(w['temp']), 
+                "conditions": str(w['conditions']), "precipitation": float(w['rain']),
+                "wind_speed": float(w['wind_speed']), "wind_direction": float(w['wind_dir'])
+            }).execute()
+            st.rerun()
+        
+        # Sync Historical
+        if st.button("🔄 Sync Historical Data"):
+            start = datetime.date(2026, 1, 1)
+            for i in range((datetime.date.today() - start).days + 1):
+                day = (start + datetime.timedelta(days=i)).isoformat()
+                if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", day).execute().data:
+                    hw = fetch_weather_historical(day)
+                    supabase.table("weather_logs").insert({
+                        "user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), 
+                        "conditions": str(hw['conditions']), "precipitation": float(hw['rain']),
+                        "wind_speed": float(hw['wind_speed']), "wind_direction": float(hw['wind_dir'])
+                    }).execute()
+            st.rerun()
 
-    hist = supabase.table("weather_logs").select("date, temperature, conditions, precipitation, wind_speed, wind_direction").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
-    if hist.data:
-        st.dataframe(pd.DataFrame(hist.data), use_container_width=True)
+        # Display Data with "Zero-Fill" Logic
+        hist = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
+        if hist.data:
+            df_w = pd.DataFrame(hist.data)
+            
+            # This forces 'None' or empty values to be 0
+            df_w['wind_speed'] = pd.to_numeric(df_w['wind_speed'], errors='coerce').fillna(0)
+            df_w['wind_direction'] = pd.to_numeric(df_w['wind_direction'], errors='coerce').fillna(0)
+            
+            st.dataframe(df_w, use_container_width=True)
