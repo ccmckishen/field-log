@@ -70,7 +70,8 @@ def fetch_weather_historical(lat, lon, date_str):
 # --- 3. AUTH & LIBRARY ---
 def render_auth_ui():
     st.title("🔐 Login / Sign Up")
-    email, password = st.text_input("Email"), st.text_input("Password", type="password")
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
     c1, c2 = st.columns(2)
     if c1.button("Login"):
         try:
@@ -89,22 +90,21 @@ if "user" not in st.session_state:
     if session: st.session_state["user"] = session.user
     else: render_auth_ui()
 
-# Renamed to bust the cache and updated columns
+# Fetch library filtered by the logged-in user
 @st.cache_data(ttl=3600)
-def fetch_seed_library():
+def fetch_seed_library(user_id):
     try:
-        response = supabase.table("seeds").select("seed_id, genus, species, botanical_subspecies, common_name, variety, sowing_instructions").execute()
+        response = supabase.table("seeds").select("seed_id, genus, species, botanical_subspecies, common_name, variety, sowing_instructions").eq("user_id", user_id).execute()
         if response.data:
             df = pd.DataFrame(response.data)
             df['botanical_subspecies'] = df['botanical_subspecies'].fillna('')
-            # Safely build display name with new schema
             df['display_name'] = df['common_name'] + " - " + df['variety'] + " (" + df['genus'] + " " + df['species'] + " " + df['botanical_subspecies'] + ")"
             df['display_name'] = df['display_name'].str.replace(" )", ")").str.replace("  ", " ")
             return df
         return pd.DataFrame()
     except: return pd.DataFrame()
 
-df = fetch_seed_library()
+df = fetch_seed_library(st.session_state["user"].id)
 
 # --- 4. APP UI ---
 st.title("☁️ Cloud Field App")
@@ -113,31 +113,89 @@ if st.sidebar.button("Logout"):
     del st.session_state["user"]
     st.rerun()
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["🗂️ Library", "🌱 Season Plan", "📝 Field Log", "📊 Insights", "🌤️ Weather History", "👤 Profile", "🗺️ Garden Planner"])
+# 8 Tabs correctly ordered
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+    "🗂️ My Library", 
+    "🌱 Season Plan", 
+    "📝 Field Log", 
+    "📊 Insights", 
+    "🌤️ Weather History", 
+    "👤 Profile", 
+    "🗺️ Garden Planner",
+    "🤝 Seed Exchange"
+])
 
 with tab1:
-    st.write("### 🗂️ Seed Library")
-    if not df.empty:
-        common = st.selectbox("Common Name:", ["-- All --"] + sorted(df['common_name'].unique().tolist()), key="lib_c")
-        g_df = df if common == "-- All --" else df[df['common_name'] == common]
-        genus = st.selectbox("Genus:", ["-- All --"] + sorted(g_df['genus'].unique().tolist()), key="lib_g")
-        s_df = g_df if genus == "-- All --" else g_df[g_df['genus'] == genus]
-        species = st.selectbox("Species:", ["-- All --"] + sorted(s_df['species'].unique().tolist()), key="lib_s")
-        f_df = s_df if species == "-- All --" else s_df[s_df['species'] == species]
+    st.write("### 🗂️ My Private Seed Library")
+    
+    # 1. Manage Library Privacy (Data Editor)
+    my_seeds = supabase.table("seeds").select("*").eq("user_id", st.session_state["user"].id).execute().data
+    
+    if my_seeds:
+        df_my_seeds = pd.DataFrame(my_seeds)
+        st.write("Manage your inventory and choose which seeds are visible to the community.")
         
-        if common == "-- All --" and genus == "-- All --" and species == "-- All --":
-            st.info("Select a category above to view seeds.")
-        else:
-            for _, row in f_df.iterrows():
-                with st.expander(f"🌿 {row['common_name']} - {row['variety']}"):
-                    st.write(f"Botanical: *{row['genus']} {row['species']}*")
-                    st.info(row.get('sowing_instructions', 'No instructions.'))
+        edited_lib = st.data_editor(
+            df_my_seeds,
+            column_config={
+                "seed_id": None, 
+                "user_id": None,
+                "is_active_season": None,
+                "sowing_instructions": None,
+                "botanical_subspecies": None,
+                "common_name": "Common Name",
+                "variety": "Variety",
+                "genus": "Genus",
+                "species": "Species",
+                "is_public": st.column_config.CheckboxColumn(
+                    "🌐 Publicly Visible?",
+                    help="Check to allow other users to see and request this seed."
+                )
+            },
+            disabled=["common_name", "variety", "genus", "species"],
+            hide_index=True,
+            use_container_width=True,
+            key="library_editor"
+        )
+        
+        if st.button("💾 Save Library Settings"):
+            for index, row in edited_lib.iterrows():
+                original_status = next((s.get('is_public', False) for s in my_seeds if s['seed_id'] == row['seed_id']), False)
+                current_status = row.get('is_public', False)
+                if current_status != original_status:
+                    supabase.table("seeds").update({"is_public": current_status}).eq("seed_id", row["seed_id"]).execute()
+            st.success("Privacy settings updated!")
+            fetch_seed_library.clear() # Clear cache
+            st.rerun()
+            
+        st.write("---")
+        
+        # 2. View Seed Instructions (Cascading Dropdowns)
+        st.write("#### 📖 View Sowing Instructions")
+        if not df.empty:
+            common = st.selectbox("Common Name:", ["-- All --"] + sorted(df['common_name'].unique().tolist()), key="lib_c")
+            g_df = df if common == "-- All --" else df[df['common_name'] == common]
+            genus = st.selectbox("Genus:", ["-- All --"] + sorted(g_df['genus'].unique().tolist()), key="lib_g")
+            s_df = g_df if genus == "-- All --" else g_df[g_df['genus'] == genus]
+            species = st.selectbox("Species:", ["-- All --"] + sorted(s_df['species'].unique().tolist()), key="lib_s")
+            f_df = s_df if species == "-- All --" else s_df[s_df['species'] == species]
+            
+            if common == "-- All --" and genus == "-- All --" and species == "-- All --":
+                st.info("Select a category above to view seed instructions.")
+            else:
+                for _, row in f_df.iterrows():
+                    with st.expander(f"🌿 {row['common_name']} - {row['variety']}"):
+                        st.write(f"Botanical: *{row['genus']} {row['species']}*")
+                        st.info(row.get('sowing_instructions', 'No instructions.'))
+    else:
+        st.info("Your personal library is empty. Add some seeds to get started!")
 
 with tab2:
     st.write("### 🌱 Current Season Planting List")
     st.write("Select the crops from your master library that you are growing this season.")
     
-    seeds = supabase.table("seeds").select("seed_id, common_name, variety, is_active_season").execute().data
+    # Filtered by user_id
+    seeds = supabase.table("seeds").select("seed_id, common_name, variety, is_active_season").eq("user_id", st.session_state["user"].id).execute().data
     
     if seeds:
         season_df = pd.DataFrame(seeds)
@@ -181,7 +239,7 @@ with tab2:
         else:
             st.info("No seeds selected for this season yet. Check the boxes above and hit save!")
     else:
-        st.warning("Your seed library is empty. Add seeds in Tab 1 first.")
+        st.warning("Your seed library is empty.")
 
 with tab3:
     if not df.empty:
@@ -298,7 +356,8 @@ with tab7:
 
     with st.expander("➕ Plant Crop"):
         beds = supabase.table("garden_beds").select("id, name").eq("user_id", st.session_state["user"].id).execute().data
-        seeds = supabase.table("seeds").select("seed_id, common_name, genus, species, botanical_subspecies, variety").execute().data
+        # Filtered by user_id
+        seeds = supabase.table("seeds").select("seed_id, common_name, genus, species, botanical_subspecies, variety").eq("user_id", st.session_state["user"].id).execute().data
         
         if seeds and beds:
             search = st.text_input("🔍 Quick Search (Common, Scientific, or Variety)", "").lower()
@@ -386,3 +445,61 @@ with tab7:
                     supabase.table("bed_plantings").delete().eq("id", p['id']).execute(); st.rerun()
         else:
             st.info("Bed is empty.")
+
+# --- NEW TAB 8: Community Exchange & Trades ---
+with tab8:
+    st.write("### 🤝 Seed Exchange Hub")
+    
+    exchange_mode = st.radio("Navigation:", ["🌐 Browse Community", "📥 Trade Inbox"], horizontal=True)
+    st.write("---")
+    
+    if exchange_mode == "🌐 Browse Community":
+        st.write("#### Master Seed Library")
+        st.write("Browse public seeds from other growers. If you see something you like, request a trade!")
+        
+        public_seeds = supabase.table("seeds").select("seed_id, common_name, variety, genus, species, user_id").eq("is_public", True).neq("user_id", st.session_state["user"].id).execute().data
+        
+        if public_seeds:
+            for s in public_seeds:
+                with st.expander(f"🌱 {s['common_name']} - {s['variety']} (*{s['genus']} {s['species']}*)"):
+                    st.write("Available for trade!")
+                    
+                    with st.form(f"trade_form_{s['seed_id']}"):
+                        msg = st.text_area("Message to owner (e.g., 'Would you trade this for my Cherokee Purple Tomatoes?')")
+                        if st.form_submit_button("✉️ Send Trade Request"):
+                            supabase.table("trade_requests").insert({
+                                "sender_id": str(st.session_state["user"].id),
+                                "receiver_id": s['user_id'],
+                                "seed_id": s['seed_id'],
+                                "message": msg
+                            }).execute()
+                            st.success("Trade request sent! Check your inbox for replies.")
+        else:
+            st.info("No public seeds available right now. Share some from your library to get started!")
+
+    elif exchange_mode == "📥 Trade Inbox":
+        st.write("#### 📥 Your Trade Requests")
+        
+        trades = supabase.table("trade_requests").select("*, seeds(common_name, variety)").or_(f"receiver_id.eq.{st.session_state['user'].id},sender_id.eq.{st.session_state['user'].id}").order("created_at", desc=True).execute().data
+        
+        if trades:
+            for t in trades:
+                seed_name = f"{t['seeds']['common_name']} ({t['seeds']['variety']})"
+                is_incoming = t['receiver_id'] == str(st.session_state["user"].id)
+                
+                direction = "📥 INCOMING" if is_incoming else "📤 OUTGOING"
+                status_icon = "⏳" if t['status'] == "Pending" else ("✅" if t['status'] == "Accepted" else "❌")
+                
+                with st.expander(f"{direction}: Request for {seed_name} - Status: {status_icon} {t['status']}"):
+                    st.write(f"**Message:** {t['message']}")
+                    
+                    if is_incoming and t['status'] == "Pending":
+                        c1, c2 = st.columns(2)
+                        if c1.button("✅ Accept Trade", key=f"acc_{t['id']}"):
+                            supabase.table("trade_requests").update({"status": "Accepted"}).eq("id", t['id']).execute()
+                            st.rerun()
+                        if c2.button("❌ Decline", key=f"dec_{t['id']}"):
+                            supabase.table("trade_requests").update({"status": "Declined"}).eq("id", t['id']).execute()
+                            st.rerun()
+        else:
+            st.info("Your inbox is empty.")
