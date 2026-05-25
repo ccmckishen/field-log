@@ -407,28 +407,49 @@ with tab7:
         html_row += '</div>'
         st.markdown(html_row, unsafe_allow_html=True)
 
-    # --- 3. MASTER SPREADSHEET EDITOR ---
-    st.write("### 📑 Master Spreadsheet Editor")
-    all_p_data = []
-    for bed in raw_beds:
-        for p in bed['bed_plantings']:
-            all_p_data.append({
-                "DB_ID": p['id'], "Bed": bed['name'], "Crop": p['seeds']['common_name'], 
-                "Start (ft)": int(p['start_position_ft']), "Length (ft)": int(p['linear_feet'])
-            })
+   # --- 3. SEPARATED SPREADSHEET EDITORS BY BED ---
+    st.write("### 📑 Edit Beds Individually")
     
-    if all_p_data:
-        df_master = pd.DataFrame(all_p_data)
-        edited_grid = st.data_editor(df_master, column_config={"DB_ID": None, "Bed": st.column_config.SelectboxColumn("Bed", options=[b['name'] for b in raw_beds], required=True), "Start (ft)": st.column_config.NumberColumn(step=1), "Length (ft)": st.column_config.NumberColumn(step=1)}, hide_index=True, use_container_width=True)
-        
-        if st.button("💾 Save All Changes"):
-            for _, row in edited_grid.iterrows():
-                new_bed_id = next(b['id'] for b in raw_beds if b['name'] == row['Bed'])
-                supabase.table("bed_plantings").update({
-                    "bed_id": new_bed_id, "start_position_ft": int(row["Start (ft)"]), "linear_feet": int(row["Length (ft)"])
-                }).eq("id", row["DB_ID"]).execute()
-            st.rerun()
-
+    # Organize plantings by bed name for easier editing
+    for bed in raw_beds:
+        with st.expander(f"Edit {bed['name']}"):
+            # Filter plantings for just this bed
+            bed_plantings = [p for p in bed['bed_plantings']]
+            
+            if bed_plantings:
+                df_bed = pd.DataFrame([
+                    {
+                        "DB_ID": p['id'], 
+                        "Crop": p['seeds']['common_name'], 
+                        "Start (ft)": int(p['start_position_ft']), 
+                        "Length (ft)": int(p['linear_feet'])
+                    } for p in bed_plantings
+                ])
+                
+                # Editor for this specific bed
+                edited_bed = st.data_editor(
+                    df_bed, 
+                    column_config={
+                        "DB_ID": None,
+                        "Start (ft)": st.column_config.NumberColumn(step=1), 
+                        "Length (ft)": st.column_config.NumberColumn(step=1),
+                        "Crop": st.column_config.TextColumn(disabled=True)
+                    }, 
+                    hide_index=True, 
+                    use_container_width=True,
+                    key=f"editor_{bed['id']}"
+                )
+                
+                if st.button(f"💾 Save {bed['name']} Changes", key=f"save_{bed['id']}"):
+                    for _, row in edited_bed.iterrows():
+                        supabase.table("bed_plantings").update({
+                            "start_position_ft": int(row["Start (ft)"]), 
+                            "linear_feet": int(row["Length (ft)"])
+                        }).eq("id", row["DB_ID"]).execute()
+                    st.success(f"Saved {bed['name']}!")
+                    st.rerun()
+            else:
+                st.info(f"{bed['name']} is empty.")
 # --- NEW TAB 8: Community Exchange & Trades ---
 with tab8:
     st.write("### 🤝 Seed Exchange Hub")
