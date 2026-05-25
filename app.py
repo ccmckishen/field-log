@@ -91,4 +91,5 @@ with tab3:
     if "user" in st.session_state:
         logs = supabase.table("field_logs").select("*").eq("user_id", st.session_state["user"].id).execute()
         if logs.data:
-            st.alta
+            # This is the corrected line
+            st.altair_chart(alt.Chart(pd.DataFrame(logs.data)).mark_bar().encode(x='action', y='count()'), use_container_width=True)
