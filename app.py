@@ -52,21 +52,29 @@ def fetch_weather_historical(lat, lon, date_str):
             "conditions": WMO_CODES.get(data.get('weather_code', [0])[0], "Clear")
         }
     except Exception as e:
-        print(f"Open-Meteo Error: {e}")
+        print(f"Open-Meteo Error for {date_str}: {e}")
 
     # 2. Fetch Wind Data from Visual Crossing
     try:
         api_key = st.secrets["VC_API_KEY"]
         url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{lat},{lon}/{date_str}/{date_str}?unitGroup=us&include=days&key={api_key}&contentType=json"
-        data = requests.get(url).json()['days'][0]
-        res_vc = {
-            "wind_speed": data.get('windspeed', 0.0),
-            "wind_dir": data.get('winddir', 0.0)
-        }
+        
+        response = requests.get(url)
+        # CHECK RESPONSE STATUS
+        if response.status_code != 200:
+            print(f"Visual Crossing API Error {response.status_code}: {response.text}")
+        else:
+            data = response.json()['days'][0]
+            # Print the actual wind data received
+            print(f"VC Data for {date_str} - Speed: {data.get('windspeed')}, Dir: {data.get('winddir')}")
+            
+            res_vc = {
+                "wind_speed": data.get('windspeed', 0.0),
+                "wind_dir": data.get('winddir', 0.0)
+            }
     except Exception as e:
-        print(f"Visual Crossing Error: {e}")
+        print(f"Visual Crossing Connection Error for {date_str}: {e}")
 
-    # Return merged dictionary
     return {**res_om, **res_vc}
 # --- 3. AUTH & LIBRARY ---
 def render_auth_ui():
