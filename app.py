@@ -423,10 +423,30 @@ with tab7:
             plot_bgcolor='white'
         )
         st.plotly_chart(fig, use_container_width=True)
-    # --- 3. SEPARATED BED EDITORS ---
+   # --- 3. SEPARATED ROW LEDGERS ---
     st.write("### 📑 Row Ledgers")
+    
+    # 1. Management table for Bed Order and Naming
+    st.write("#### 🏗️ Manage Garden Rows")
+    df_beds = pd.DataFrame(raw_beds)[['id', 'name', 'row_order', 'length_ft']]
+    edited_beds = st.data_editor(
+        df_beds,
+        column_config={"id": None, "name": "Bed Name", "row_order": "Display Order", "length_ft": "Length (ft)"},
+        hide_index=True, use_container_width=True
+    )
+    
+    if st.button("💾 Save Row Order/Names"):
+        for _, row in edited_beds.iterrows():
+            supabase.table("garden_beds").update({
+                "name": row["name"], 
+                "row_order": int(row["row_order"]),
+                "length_ft": int(row["length_ft"])
+            }).eq("id", row["id"]).execute()
+        st.rerun()
+
+    # 2. Individual Crop Editors for each bed
     for bed in raw_beds:
-        with st.expander(f"Edit {bed['name']}"):
+        with st.expander(f"Edit Crops in {bed['name']}"):
             df_bed = pd.DataFrame([
                 {"DB_ID": p['id'], "Crop": p['seeds']['common_name'], "Start (ft)": int(p['start_position_ft']), "Len (ft)": int(p['linear_feet'])}
                 for p in bed['bed_plantings']
@@ -438,12 +458,18 @@ with tab7:
                 hide_index=True, use_container_width=True, key=f"edit_{bed['id']}"
             )
             
-            if st.button(f"💾 Save {bed['name']} Changes", key=f"save_{bed['id']}"):
+            c1, c2 = st.columns([1, 4])
+            if c1.button(f"💾 Save {bed['name']}", key=f"save_{bed['id']}"):
                 for _, row in edited_bed.iterrows():
                     supabase.table("bed_plantings").update({
                         "start_position_ft": int(row["Start (ft)"]),
                         "linear_feet": int(row["Len (ft)"])
                     }).eq("id", row["DB_ID"]).execute()
+                st.rerun()
+            
+            if c2.button(f"🗑️ Delete Entire Row: {bed['name']}", key=f"del_bed_{bed['id']}"):
+                supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute()
+                supabase.table("garden_beds").delete().eq("id", bed['id']).execute()
                 st.rerun()
 # --- NEW TAB 8: Community Exchange & Trades ---
 with tab8:
