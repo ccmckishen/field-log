@@ -416,15 +416,16 @@ with tab7:
         st.rerun()
 
     # Individual Crop Editors
-   # 2. Individual Crop Editors for each bed
+  # 2. Individual Crop Editors for each bed
     for i, bed in enumerate(raw_beds):
-        # We use both the DB ID and the index 'i' to guarantee uniqueness
-        b_key = f"bed_{bed['id']}_{i}"
+        # We add 'tab7_' to the prefix to ensure it never collides with other tabs
+        # We add 'len(df_bed)' to ensure the key refreshes when data changes
+        b_key = f"tab7_{bed['id']}_{i}"
         
         with st.container():
             with st.expander(f"Edit Crops in {bed['name']}"):
                 
-                # --- QUICK ADD SECTION ---
+                # --- QUICK ADD ---
                 st.write("#### ⚡ Quick Add to this row")
                 with st.form(f"quick_add_{b_key}", clear_on_submit=True):
                     col_a, col_b, col_c, col_d = st.columns([2, 1, 1, 1])
@@ -442,16 +443,40 @@ with tab7:
                     default_start = (sorted_p[0]['start_position_ft'] + sorted_p[0]['linear_feet']) if sorted_p else 0
                     pos = col_d.number_input("Start", value=int(default_start), step=1, key=f"pos_{b_key}")
                     
-                    c_submit, c_undo = st.columns([3, 1])
-                    if c_submit.form_submit_button("Add Crop"):
+                    if st.form_submit_button("Add Crop"):
                         if sel_s:
                             start_val = pos if direction == "L->R" else (bed['length_ft'] - pos - f_ft)
                             supabase.table("bed_plantings").insert({"bed_id": bed['id'], "seed_id": s_map[sel_s], "linear_feet": f_ft, "start_position_ft": start_val}).execute()
                             st.rerun()
-                    if bed['bed_plantings'] and c_undo.form_submit_button("❌ Undo"):
-                        last = sorted(bed['bed_plantings'], key=lambda x: x['id'], reverse=True)[0]
-                        supabase.table("bed_plantings").delete().eq("id", last['id']).execute()
+
+                # --- SPREADSHEET EDITOR ---
+                df_bed = pd.DataFrame([{"DB_ID": p['id'], "Crop": p['seeds']['common_name'], "Variety": p['seeds']['variety'], "Start (ft)": int(p['start_position_ft']), "Len (ft)": int(p['linear_feet'])} for p in bed['bed_plantings']])
+                
+                # THE NUCLEAR FIX: Include the data length in the key so it refreshes correctly
+                edited_bed = st.data_editor(
+                    df_bed, 
+                    column_config={"DB_ID": None, "Crop": st.column_config.TextColumn(disabled=True), "Variety": st.column_config.TextColumn(disabled=True)}, 
+                    hide_index=True, use_container_width=True, key=f"{b_key}_editor_{len(df_bed)}"
+                )
+                
+                # --- ACTIONS ---
+                c1, c2, c3 = st.columns([1, 1, 3])
+                if c1.button(f"💾 Save {bed['name']}", key=f"save_{b_key}"):
+                    for _, row in edited_bed.iterrows():
+                        supabase.table("bed_plantings").update({"start_position_ft": int(row["Start (ft)"]), "linear_feet": int(row["Len (ft)"])}).eq("id", row["DB_ID"]).execute()
+                    st.rerun()
+                
+                with c2.expander("🗑️ Remove Crops"):
+                    crop_opts = {p['id']: f"{p['seeds']['variety']} ({p['start_position_ft']}ft)" for p in bed['bed_plantings']}
+                    to_rem = st.multiselect("Pick crops", options=list(crop_opts.keys()), format_func=lambda x: crop_opts[x], key=f"del_{b_key}")
+                    if st.button("Confirm Removal", key=f"conf_del_{b_key}"):
+                        for cid in to_rem: supabase.table("bed_plantings").delete().eq("id", cid).execute()
                         st.rerun()
+                
+                if c3.button(f"🚨 Delete Row: {bed['name']}", key=f"del_bed_{b_key}"):
+                    supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute()
+                    supabase.table("garden_beds").delete().eq("id", bed['id']).execute()
+                    st.rerun()
 
                 # --- SPREADSHEET EDITOR ---
                 df_bed = pd.DataFrame([{"DB_ID": p['id'], "Crop": p['seeds']['common_name'], "Variety": p['seeds']['variety'], "Start (ft)": int(p['start_position_ft']), "Len (ft)": int(p['linear_feet'])} for p in bed['bed_plantings']])
