@@ -133,7 +133,7 @@ with tab3:
     if logs.data: st.altair_chart(alt.Chart(pd.DataFrame(logs.data)).mark_bar().encode(x='action', y='count()'), use_container_width=True)
 
 with tab4:
-  st.write("### 🌤️ Daily Weather Log")
+    st.write("### 🌤️ Daily Weather Log")
     
     # 1. Fetch location safely
     loc = supabase.table("user_settings").select("lat, lon").eq("user_id", st.session_state["user"].id).execute()
@@ -176,7 +176,6 @@ with tab4:
             df_w['conditions'] = df_w['conditions'].replace(['N/A', 'None', 'not available'], 'Clear').fillna('Clear')
             df_w[['wind_speed', 'wind_direction']] = df_w[['wind_speed', 'wind_direction']].fillna(0)
             st.dataframe(df_w, use_container_width=True)
-
 with tab5:
     st.write("### 👤 Location Settings")
     zip_code = st.text_input("Enter your ZIP Code:")
