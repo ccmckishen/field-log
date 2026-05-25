@@ -5,6 +5,7 @@ import datetime
 import altair as alt
 import requests
 import time
+import plotly.graph_objects as go
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="Cloud Field App", page_icon="☁️", layout="wide")
@@ -210,3 +211,45 @@ with tab5:
             supabase.table("user_settings").upsert({"user_id": str(st.session_state["user"].id), "lat": lat, "lon": lon}).execute()
             st.success("Location saved!")
         else: st.error("Invalid ZIP Code.")
+with tab6:
+    st.write("### 🗺️ Visual Garden Planner (Curved & Custom)")
+    
+    # 1. Input Form
+    with st.expander("➕ Add/Modify Garden Bed"):
+        seeds = supabase.table("seeds").select("seed_id, common_name, variety").execute().data
+        seed_opts = {f"{s['common_name']} - {s['variety']}": s['seed_id'] for s in seeds}
+        
+        with st.form("bed_form"):
+            name = st.text_input("Bed Name")
+            path = st.text_input("SVG Path String", help="Get this string from an SVG path builder tool.")
+            plant_sel = st.selectbox("Plant", list(seed_opts.keys()))
+            
+            if st.form_submit_button("Update Map"):
+                supabase.table("garden_layout").upsert({
+                    "user_id": str(st.session_state["user"].id),
+                    "location_name": name,
+                    "seed_id": seed_opts[plant_sel],
+                    "svg_path": path
+                }).execute()
+                st.rerun()
+
+    # 2. Render Plotly Map
+    layout = supabase.table("garden_layout").select("location_name, svg_path, seeds(common_name)").eq("user_id", st.session_state["user"].id).execute()
+    
+    if layout.data:
+        fig = go.Figure()
+        
+        for bed in layout.data:
+            if bed.get('svg_path'):
+                fig.add_shape(type="path",
+                    path=bed['svg_path'],
+                    line=dict(color="RoyalBlue"),
+                    fillcolor="LightSkyBlue",
+                )
+                # Annotate center (using a rough center or label offset)
+                fig.add_annotation(x=0, y=0, text=bed['location_name'], showarrow=False)
+
+        fig.update_xaxes(range=[0, 100], showgrid=True)
+        fig.update_yaxes(range=[0, 100], showgrid=True)
+        fig.update_layout(height=500, plot_bgcolor="white", title="Garden Layout")
+        st.plotly_chart(fig, use_container_width=True)
