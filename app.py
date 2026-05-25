@@ -174,6 +174,7 @@ with tab4:
                 day = (start + datetime.timedelta(days=i)).isoformat()
                 if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", day).execute().data:
                     hw = fetch_weather_historical(lat, lon, day)
+                    time.sleep(1.2) # Forces pause to keep API connection alive
                     supabase.table("weather_logs").insert({
                         "user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), 
                         "conditions": str(hw['conditions']), "precipitation": float(hw['rain']),
@@ -181,7 +182,7 @@ with tab4:
                     }).execute()
             st.rerun()
 
-        # Display Refined Data
+        # Display Data
         hist = supabase.table("weather_logs").select("date, temperature, conditions, precipitation, wind_speed").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
         
         if hist.data:
