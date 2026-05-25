@@ -128,6 +128,20 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 with tab1:
     st.write("### 🗂️ My Private Seed Library")
     
+    # --- NEW: CLAIM LEGACY SEEDS SCRIPT ---
+    # Detects if there are seeds in the database without an assigned user
+    unclaimed_seeds = supabase.table("seeds").select("seed_id").is_("user_id", "null").execute().data
+    
+    if unclaimed_seeds:
+        st.warning("⚠️ We found legacy seeds in the database from before the community update. They need to be linked to your new account.")
+        if st.button("📥 Claim Old Seed Library"):
+            # Assigns all old seeds to your specific user ID
+            for seed in unclaimed_seeds:
+                supabase.table("seeds").update({"user_id": str(st.session_state["user"].id)}).eq("seed_id", seed["seed_id"]).execute()
+            fetch_seed_library.clear() # Clears the cache so they show up instantly
+            st.rerun()
+        st.write("---")
+    
     # 1. Manage Library Privacy (Data Editor)
     my_seeds = supabase.table("seeds").select("*").eq("user_id", st.session_state["user"].id).execute().data
     
