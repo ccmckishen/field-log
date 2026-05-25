@@ -419,16 +419,30 @@ with tab7:
     for bed in raw_beds:
         with st.expander(f"Edit Crops in {bed['name']}"):
             # Quick Add Form
+            st.write("#### ⚡ Quick Add to this row")
             with st.form(f"quick_add_{bed['id']}", clear_on_submit=True):
                 col_a, col_b, col_c = st.columns([3, 1, 1])
+                
+                # Fetch seeds
                 all_seeds = supabase.table("seeds").select("seed_id, common_name, variety").eq("user_id", st.session_state["user"].id).execute().data
-                s_map = {f"{s['common_name']} - {s['variety']}": s['seed_id'] for s in all_seeds}
-                sel_s = col_a.selectbox("Seed", list(s_map.keys()), key=f"sel_{bed['id']}")
+                
+                # Dynamic Filter Logic
+                search_query = col_a.text_input("Search Seed", placeholder="Type to filter...", key=f"search_{bed['id']}")
+                filtered_seeds = [s for s in all_seeds if search_query.lower() in f"{s['common_name']} {s['variety']}".lower()]
+                s_map = {f"{s['common_name']} ({s['variety']})": s['seed_id'] for s in filtered_seeds}
+                
+                sel_s = col_a.selectbox("Select Result", list(s_map.keys()), key=f"sel_{bed['id']}", label_visibility="collapsed")
+                
                 f_ft = col_b.number_input("Feet", value=1, step=1, key=f"len_{bed['id']}")
                 pos = col_c.number_input("Start", value=0, step=1, key=f"pos_{bed['id']}")
+                
                 if st.form_submit_button("Add Crop"):
-                    supabase.table("bed_plantings").insert({"bed_id": bed['id'], "seed_id": s_map[sel_s], "linear_feet": f_ft, "start_position_ft": pos}).execute()
-                    st.rerun()
+                    if sel_s:
+                        supabase.table("bed_plantings").insert({
+                            "bed_id": bed['id'], "seed_id": s_map[sel_s],
+                            "linear_feet": f_ft, "start_position_ft": pos
+                        }).execute()
+                        st.rerun()
 
             # Spreadsheet Editor
             df_bed = pd.DataFrame([{"DB_ID": p['id'], "Crop": p['seeds']['common_name'], "Variety": p['seeds']['variety'], "Start (ft)": int(p['start_position_ft']), "Len (ft)": int(p['linear_feet'])} for p in bed['bed_plantings']])
