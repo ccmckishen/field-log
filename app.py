@@ -25,27 +25,26 @@ def fetch_weather():
         url = f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&current=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph&timezone=America/New_York"
         res = requests.get(url).json().get('current', {})
         return {
-            "temp": res.get('temperature_2m', 0),
-            "rain": res.get('precipitation', 0),
+            "temp": res.get('temperature_2m', 0.0),
+            "rain": res.get('precipitation', 0.0),
             "conditions": WMO_CODES.get(res.get('weather_code', 0), "Clear"),
-            "wind_speed": res.get('wind_speed_10m', 0),
-            "wind_dir": res.get('wind_direction_10m', 0)
+            "wind_speed": res.get('wind_speed_10m', 0.0),
+            "wind_dir": res.get('wind_direction_10m', 0.0)
         }
-    except Exception: return None
+    except Exception: return {"temp": 0, "rain": 0, "conditions": "Clear", "wind_speed": 0, "wind_dir": 0}
 
 def fetch_weather_historical(date_str):
     try:
         url = f"https://archive-api.open-meteo.com/v1/archive?latitude={LAT}&longitude={LON}&start_date={date_str}&end_date={date_str}&daily=temperature_2m_mean,precipitation_sum,weather_code,wind_speed_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph&timezone=America/New_York"
         res = requests.get(url).json().get('daily', {})
         return {
-            "temp": res.get('temperature_2m_mean', [0])[0],
-            "rain": res.get('precipitation_sum', [0])[0],
+            "temp": res.get('temperature_2m_mean', [0.0])[0],
+            "rain": res.get('precipitation_sum', [0.0])[0],
             "conditions": WMO_CODES.get(res.get('weather_code', [0])[0], "Clear"),
-            "wind_speed": res.get('wind_speed_10m_max', [0])[0],
-            "wind_dir": res.get('wind_direction_10m_dominant', [0])[0]
+            "wind_speed": res.get('wind_speed_10m_max', [0.0])[0],
+            "wind_dir": res.get('wind_direction_10m_dominant', [0.0])[0]
         }
-    except Exception: return None
-
+    except Exception: return {"temp": 0, "rain": 0, "conditions": "Clear", "wind_speed": 0, "wind_dir": 0}
 # --- 3. AUTH & LIBRARY ---
 if "user" not in st.session_state:
     session = supabase.auth.get_session()
