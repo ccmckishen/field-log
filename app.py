@@ -212,60 +212,63 @@ with tab5:
             st.success("Location saved!")
         else: st.error("Invalid ZIP Code.")
 with tab6:
-    st.write("### 📏 Row-Based Garden Planner")
+    st.write("### 📏 Garden Bed Inventory")
     
-    # 1. Manage Beds
-    with st.expander("➕ Define/Update Bed"):
-        with st.form("bed_form"):
-            b_name = st.text_input("Bed Name")
-            b_len = st.number_input("Length (ft)", 0.0)
-            b_wid = st.number_input("Width (ft)", 0.0)
-            b_ord = st.number_input("Row Order (1, 2, 3...)", 1)
-            if st.form_submit_button("Save Bed"):
-                supabase.table("garden_beds").upsert({
-                    "user_id": str(st.session_state["user"].id), 
-                    "name": b_name, "length_ft": b_len, "width_ft": b_wid, "row_order": b_ord
-                }).execute()
-                st.rerun()
-
-    # 2. Add Crops
-    with st.expander("➕ Plant Crop in Bed"):
+    # 1. ADD PLANTING (Streamlined)
+    with st.expander("➕ Plant in Bed"):
         beds = supabase.table("garden_beds").select("id, name").eq("user_id", st.session_state["user"].id).execute().data
         seeds = supabase.table("seeds").select("seed_id, common_name, variety").execute().data
         
         bed_map = {b['name']: b['id'] for b in beds}
-        seed_map = {f"{s['common_name']} ({s['variety']})": s['seed_id'] for s in seeds}
+        crop_names = sorted(list(set([s['common_name'] for s in seeds])))
         
-        with st.form("plant_form"):
-            sel_bed = st.selectbox("Select Bed", list(bed_map.keys()) if bed_map else ["No beds created"])
-            sel_seed = st.selectbox("Select Variety", list(seed_map.keys()))
-            lin_ft = st.number_input("Linear Feet Used", 0.0)
-            if st.form_submit_button("Plant Crop"):
+        c1, c2 = st.columns(2)
+        sel_crop = c1.selectbox("Crop", crop_names, key="crop_sel")
+        
+        filtered_seeds = [s for s in seeds if s['common_name'] == sel_crop]
+        variety_map = {f"{s['variety']}": s['seed_id'] for s in filtered_seeds}
+        sel_variety = c2.selectbox("Variety", list(variety_map.keys()), key="var_sel")
+        
+        with st.form("plant_form_fast"):
+            c3, c4, c5 = st.columns(3)
+            sel_bed = c3.selectbox("Bed", list(bed_map.keys()))
+            lin_ft = c4.number_input("Linear Feet", 0.0)
+            spacing = c5.number_input("Spacing (in)", 0.0)
+            
+            if st.form_submit_button("Confirm Planting"):
                 supabase.table("bed_plantings").insert({
                     "bed_id": bed_map[sel_bed], 
-                    "seed_id": seed_map[sel_seed], 
-                    "linear_feet": lin_ft
+                    "seed_id": variety_map[sel_variety], 
+                    "linear_feet": lin_ft,
+                    "spacing_inches": spacing
                 }).execute()
                 st.rerun()
 
-    # 3. Row Layout View (With Delete Capability)
+    # 2. VISUAL BED BREAKDOWN
     st.write("---")
-    beds_data = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, seeds(common_name))").eq("user_id", st.session_state["user"].id).order("row_order").execute().data
+    beds_data = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, spacing_inches, seeds(common_name, variety))").eq("user_id", st.session_state["user"].id).order("row_order").execute().data
     
     for bed in beds_data:
         total_used = sum(p['linear_feet'] for p in bed['bed_plantings'])
+        st.subheader(f"Row {bed['row_order']}: {bed['name']} ({bed['length_ft']}ft)")
         
-        with st.expander(f"Row {bed['row_order']}: {bed['name']} ({bed['length_ft']}ft)"):
-            st.write(f"**Dimensions:** {bed['length_ft']}ft x {bed['width_ft']}ft")
-            st.progress(min(total_used / bed['length_ft'] if bed['length_ft'] > 0 else 0, 1.0))
+        # Simple visual usage bar
+        percent = min(total_used / bed['length_ft'] if bed['length_ft'] > 0 else 0, 1.0)
+        st.progress(percent, text=f"{total_used}ft used of {bed['length_ft']}ft")
+        
+        # Display as a clean table
+        if bed['bed_plantings']:
+            display_data = [{
+                "Variety": f"{p['seeds']['common_name']} ({p['seeds']['variety']})",
+                "Lin. Ft": p['linear_feet'],
+                "Spacing": f"{p['spacing_inches']} in"
+            } for p in bed['bed_plantings']]
+            st.table(pd.DataFrame(display_data))
             
-            for p in bed['bed_plantings']:
-                st.write(f"- {p['seeds']['common_name']}: {p['linear_feet']}ft")
-            
-            # --- DELETE LOGIC ---
-            if st.button(f"🗑️ Delete Bed: {bed['name']}", key=f"del_{bed['id']}"):
-                # 1. Delete associated plantings first to avoid FK constraint error
+            # Delete link
+            if st.button(f"Delete Bed: {bed['name']}", key=f"del_{bed['id']}"):
                 supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute()
-                # 2. Delete the bed
                 supabase.table("garden_beds").delete().eq("id", bed['id']).execute()
                 st.rerun()
+        else:
+            st.info("Bed is empty.")
