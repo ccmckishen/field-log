@@ -133,35 +133,46 @@ with tab3:
     if logs.data: st.altair_chart(alt.Chart(pd.DataFrame(logs.data)).mark_bar().encode(x='action', y='count()'), use_container_width=True)
 
 with tab4:
-    # REPLACE WITH THIS
-loc = supabase.table("user_settings").select("lat, lon").eq("user_id", st.session_state["user"].id).execute()
-
-if not loc.data or len(loc.data) == 0:
-    st.warning("Please save your location in the Profile tab first.")
-else:
-    # Safely get the first result
-    lat, lon = loc.data[0]['lat'], loc.data[0]['lon']
+  st.write("### 🌤️ Daily Weather Log")
+    
+    # 1. Fetch location safely
+    loc = supabase.table("user_settings").select("lat, lon").eq("user_id", st.session_state["user"].id).execute()
+    
+    if not loc.data or len(loc.data) == 0:
+        st.warning("Please go to the 'Profile' tab and save your ZIP code first.")
     else:
-        lat, lon = loc.data['lat'], loc.data['lon']
-        # Auto-Sync Today
+        lat, lon = loc.data[0]['lat'], loc.data[0]['lon']
+        
+        # 2. Automatic Log for Today
         today = datetime.date.today().isoformat()
         if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", today).execute().data:
             w = fetch_weather(lat, lon)
-            supabase.table("weather_logs").insert({"user_id": str(st.session_state["user"].id), "date": today, "temperature": float(w['temp']), "conditions": str(w['conditions']), "precipitation": float(w['rain']), "wind_speed": float(w['wind_speed']), "wind_direction": float(w['wind_dir'])}).execute()
+            supabase.table("weather_logs").insert({
+                "user_id": str(st.session_state["user"].id), "date": today, "temperature": float(w['temp']), 
+                "conditions": str(w['conditions']), "precipitation": float(w['rain']),
+                "wind_speed": float(w['wind_speed']), "wind_direction": float(w['wind_dir'])
+            }).execute()
             st.rerun()
         
+        # 3. Sync Historical Data
         if st.button("🔄 Sync Historical Data"):
             start = datetime.date(2026, 1, 1)
             for i in range((datetime.date.today() - start).days + 1):
                 day = (start + datetime.timedelta(days=i)).isoformat()
                 if not supabase.table("weather_logs").select("date").eq("user_id", st.session_state["user"].id).eq("date", day).execute().data:
                     hw = fetch_weather_historical(lat, lon, day)
-                    supabase.table("weather_logs").insert({"user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), "conditions": str(hw['conditions']), "precipitation": float(hw['rain']), "wind_speed": float(hw['wind_speed']), "wind_direction": float(hw['wind_dir'])}).execute()
+                    supabase.table("weather_logs").insert({
+                        "user_id": str(st.session_state["user"].id), "date": day, "temperature": float(hw['temp']), 
+                        "conditions": str(hw['conditions']), "precipitation": float(hw['rain']),
+                        "wind_speed": float(hw['wind_speed']), "wind_direction": float(hw['wind_dir'])
+                    }).execute()
             st.rerun()
 
+        # 4. Display Data
         hist = supabase.table("weather_logs").select("*").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
         if hist.data:
             df_w = pd.DataFrame(hist.data)
+            # Ensure wind data shows 0 instead of None
             df_w['conditions'] = df_w['conditions'].replace(['N/A', 'None', 'not available'], 'Clear').fillna('Clear')
             df_w[['wind_speed', 'wind_direction']] = df_w[['wind_speed', 'wind_direction']].fillna(0)
             st.dataframe(df_w, use_container_width=True)
