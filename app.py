@@ -214,25 +214,30 @@ with tab5:
 with tab6:
     st.write("### 📏 Detailed Row Planner")
     
-    # 1. Add Planting (3-Tier Cascading)
+    # 1. Add Planting
     with st.expander("➕ Plant Crop (Common -> Scientific -> Variety)"):
         beds = supabase.table("garden_beds").select("id, name").eq("user_id", st.session_state["user"].id).execute().data
-        # Querying the new column name
-        seeds = supabase.table("seeds").select("seed_id, common_name, scientific_name, variety").execute().data
+        # Updated Query: Requesting the three separate columns
+        seeds = supabase.table("seeds").select("seed_id, common_name, genus, species, botanical_subspecies, variety").execute().data
         
         bed_map = {b['name']: b['id'] for b in beds}
         
         if seeds:
+            # Helper to create a formatted Scientific Name string
+            def get_sci_name(s):
+                return f"{s['genus']} {s['species']} {s['botanical_subspecies'] or ''}".strip()
+
             # Tier 1: Common Name
             crop_names = sorted(list(set([s['common_name'] for s in seeds])))
             sel_crop = st.selectbox("1. Common Name", crop_names, key="c_sel")
             
-            # Tier 2: Scientific Name
-            scientific_names = sorted(list(set([s['scientific_name'] for s in seeds if s['common_name'] == sel_crop])))
-            sel_scientific = st.selectbox("2. Scientific Name (Genus species)", scientific_names, key="l_sel")
+            # Tier 2: Scientific Name (Combines genus, species, subspecies)
+            # Create a list of unique combined scientific names
+            sci_names = sorted(list(set([get_sci_name(s) for s in seeds if s['common_name'] == sel_crop])))
+            sel_scientific = st.selectbox("2. Scientific Name (Genus species)", sci_names, key="l_sel")
             
             # Tier 3: Variety
-            varieties = [s for s in seeds if s['common_name'] == sel_crop and s['scientific_name'] == sel_scientific]
+            varieties = [s for s in seeds if s['common_name'] == sel_crop and get_sci_name(s) == sel_scientific]
             var_map = {f"{s['variety']}": s['seed_id'] for s in varieties}
             sel_var = st.selectbox("3. Variety", list(var_map.keys()), key="v_sel")
             
@@ -253,12 +258,13 @@ with tab6:
                     }).execute()
                     st.rerun()
         else:
-            st.info("No seeds found. Add seeds to your library first.")
+            st.info("No seeds found.")
 
     # 2. Visual Row View
     st.write("---")
     st.write("### 📋 Row Inventory")
-    beds_data = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, spacing_inches, seeds(common_name, scientific_name, variety))").eq("user_id", st.session_state["user"].id).order("row_order").execute().data
+    # Updated query to match new schema
+    beds_data = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, spacing_inches, seeds(common_name, genus, species, botanical_subspecies, variety))").eq("user_id", st.session_state["user"].id).order("row_order").execute().data
     
     for bed in beds_data:
         st.subheader(f"Row {bed['row_order']}: {bed['name']} ({bed['length_ft']}ft)")
@@ -266,13 +272,18 @@ with tab6:
         if bed['bed_plantings']:
             sorted_plantings = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'])
             
-            display_data = [{
-                "Pos (ft)": p['start_position_ft'],
-                "Variety": f"{p['seeds']['common_name']} ({p['seeds']['variety']})",
-                "Scientific": p['seeds']['scientific_name'], # Updated label
-                "Length": p['linear_feet'],
-                "Spacing": f"{p['spacing_inches']}in"
-            } for p in sorted_plantings]
+            display_data = []
+            for p in sorted_plantings:
+                # Reconstruct scientific name for the table display
+                s = p['seeds']
+                sci_name = f"{s['genus']} {s['species']} {s['botanical_subspecies'] or ''}".strip()
+                display_data.append({
+                    "Pos (ft)": p['start_position_ft'],
+                    "Variety": f"{s['common_name']} ({s['variety']})",
+                    "Scientific": sci_name,
+                    "Length": p['linear_feet'],
+                    "Spacing": f"{p['spacing_inches']}in"
+                })
             
             st.table(pd.DataFrame(display_data))
             
@@ -280,5 +291,3 @@ with tab6:
                 supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute()
                 supabase.table("garden_beds").delete().eq("id", bed['id']).execute()
                 st.rerun()
-        else:
-            st.info("Bed is empty.")
