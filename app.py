@@ -153,6 +153,7 @@ with tab3:
 with tab4:
     st.write("### 🌤️ Daily Weather Log")
     loc = supabase.table("user_settings").select("lat, lon").eq("user_id", st.session_state["user"].id).execute()
+    
     if not loc.data or len(loc.data) == 0:
         st.warning("Please go to the 'Profile' tab and save your ZIP code first.")
     else:
@@ -183,28 +184,26 @@ with tab4:
                     }).execute()
             st.rerun()
 
-        # Fetch and Clean Data
+        # Display Refined Data
         hist = supabase.table("weather_logs").select("date, temperature, conditions, precipitation, wind_speed, wind_direction").eq("user_id", st.session_state["user"].id).order("date", desc=True).execute()
         
         if hist.data:
             df_w = pd.DataFrame(hist.data)
+            # Force cleanup of conditions and wind data
             df_w['conditions'] = df_w['conditions'].replace(['N/A', 'None', 'not available'], 'Clear').fillna('Clear')
             df_w[['wind_speed', 'wind_direction']] = df_w[['wind_speed', 'wind_direction']].fillna(0)
             
-            # 1. Temperature Chart
+            # Graphs
             st.write("#### 🌡️ Temperature (°F)")
             st.altair_chart(alt.Chart(df_w).mark_line(point=True).encode(x='date', y='temperature', tooltip=['date', 'temperature']), use_container_width=True)
             
-            # 2. Precipitation Chart
             st.write("#### 💧 Precipitation (inches)")
             st.altair_chart(alt.Chart(df_w).mark_bar(color='steelblue').encode(x='date', y='precipitation', tooltip=['date', 'precipitation']), use_container_width=True)
             
-            # 3. Wind Speed Chart
             st.write("#### 🌬️ Wind Speed (mph)")
             st.altair_chart(alt.Chart(df_w).mark_line(color='orange', point=True).encode(x='date', y='wind_speed', tooltip=['date', 'wind_speed']), use_container_width=True)
-
+            
             # Data Table
-            st.write("#### 📋 Raw Data Log")
             st.dataframe(df_w, use_container_width=True, hide_index=True)
 with tab5:
     st.write("### 👤 Location Settings")
