@@ -108,7 +108,7 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 # UPDATE THIS LINE
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🗂️ Library", "📝 Field Log", "📊 Insights", "🌤️ Weather History", "👤 Profile", "🗺️ Garden Planner"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["🗂️ Library", "🌱 Season Plan", "📝 Field Log", "📊 Insights", "🌤️ Weather History", "👤 Profile", "🗺️ Garden Planner"])
 with tab1:
     st.write("### 🗂️ Seed Library")
     if not df.empty:
