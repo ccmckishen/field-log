@@ -40,11 +40,10 @@ def fetch_weather(lat, lon):
     except Exception: return {"temp": 0.0, "rain": 0.0, "conditions": "Clear", "wind_speed": 0.0}
 
 def fetch_weather_historical(lat, lon, date_str):
-    # Initialize defaults
     res_om = {"temp": 0.0, "rain": 0.0, "conditions": "Clear"}
     res_vc = {"wind_speed": 0.0}
 
-    # 1. Fetch Temp/Rain/Conditions from Open-Meteo
+    # 1. Fetch Open-Meteo
     try:
         url = f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lon}&start_date={date_str}&end_date={date_str}&daily=temperature_2m_mean,precipitation_sum,weather_code&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=America/New_York"
         data = requests.get(url).json().get('daily', {})
@@ -53,17 +52,17 @@ def fetch_weather_historical(lat, lon, date_str):
             "rain": data.get('precipitation_sum', [0.0])[0],
             "conditions": WMO_CODES.get(data.get('weather_code', [0])[0], "Clear")
         }
-    except Exception as e:
-        print(f"Open-Meteo Error: {e}")
+    except Exception: pass
 
-    # 2. Fetch Wind Speed from Visual Crossing
+    # 2. Fetch Visual Crossing
     try:
         api_key = st.secrets["VC_API_KEY"]
         url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{lat},{lon}/{date_str}/{date_str}?unitGroup=us&include=days&key={api_key}&contentType=json"
-        data = requests.get(url).json()['days'][0]
-        res_vc = {"wind_speed": data.get('windspeed', 0.0)}
-    except Exception as e:
-        print(f"Visual Crossing Error: {e}")
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()['days'][0]
+            res_vc = {"wind_speed": data.get('windspeed', 0.0)}
+    except Exception: pass
 
     return {**res_om, **res_vc}
 # --- 3. AUTH & LIBRARY ---
