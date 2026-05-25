@@ -383,73 +383,58 @@ with tab7:
 
     st.write("---")
 
-    # --- 2. THE VISUAL GRID ---
-    raw_beds = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, seeds(common_name))").eq("user_id", st.session_state["user"].id).order("name").execute().data
+    # --- 2. BEDS DASHBOARD ---
+    raw_beds = supabase.table("garden_beds").select("*, bed_plantings(id, linear_feet, start_position_ft, seeds(common_name, variety))").eq("user_id", st.session_state["user"].id).order("name").execute().data
     
-    st.write("### 🗺️ Master Garden Grid")
+    st.write("### 🗺️ Individual Bed Layouts")
     
-    # CSS for the grid layout
-    st.markdown("""
-        <style>
-        .row-container { display: flex; align-items: center; margin-bottom: 5px; height: 40px; background: #f0f0f0; border: 1px solid #ccc; position: relative; }
-        .crop-block { position: absolute; height: 30px; background: #2E8B57; color: white; display: flex; align-items: center; justify-content: center; font-size: 10px; border: 1px solid white; }
-        </style>
-    """, unsafe_allow_html=True)
-
     for bed in raw_beds:
-        st.write(f"**{bed['name']}**")
-        # Container representing the full length of the bed
-        html_row = f'<div class="row-container" style="width: 100%;">'
-        for p in bed['bed_plantings']:
-            left_pct = (p['start_position_ft'] / bed['length_ft']) * 100
-            width_pct = (p['linear_feet'] / bed['length_ft']) * 100
-            html_row += f'<div class="crop-block" style="left: {left_pct}%; width: {width_pct}%;">{p["seeds"]["common_name"]}</div>'
-        html_row += '</div>'
-        st.markdown(html_row, unsafe_allow_html=True)
-
-   # --- 3. SEPARATED SPREADSHEET EDITORS BY BED ---
-    st.write("### 📑 Edit Beds Individually")
-    
-    # Organize plantings by bed name for easier editing
-    for bed in raw_beds:
-        with st.expander(f"Edit {bed['name']}"):
-            # Filter plantings for just this bed
-            bed_plantings = [p for p in bed['bed_plantings']]
+        st.subheader(f"📍 {bed['name']} ({bed['length_ft']} ft)")
+        
+        # Grid layout for Visual + Spreadsheet
+        col1, col2 = st.columns([1, 1])
+        
+        # Visual Map on the left
+        with col1:
+            st.markdown(f"**Visual Representation:**")
+            st.markdown("""
+                <style>
+                .bed-box { display: flex; border: 2px solid #333; height: 50px; background: #fff; position: relative; }
+                .crop-segment { position: absolute; height: 100%; background: #2E8B57; border-right: 1px solid white; color: white; font-size: 9px; display: flex; align-items: center; justify-content: center; }
+                </style>
+            """, unsafe_allow_html=True)
             
-            if bed_plantings:
-                df_bed = pd.DataFrame([
-                    {
-                        "DB_ID": p['id'], 
-                        "Crop": p['seeds']['common_name'], 
-                        "Start (ft)": int(p['start_position_ft']), 
-                        "Length (ft)": int(p['linear_feet'])
-                    } for p in bed_plantings
-                ])
-                
-                # Editor for this specific bed
-                edited_bed = st.data_editor(
-                    df_bed, 
-                    column_config={
-                        "DB_ID": None,
-                        "Start (ft)": st.column_config.NumberColumn(step=1), 
-                        "Length (ft)": st.column_config.NumberColumn(step=1),
-                        "Crop": st.column_config.TextColumn(disabled=True)
-                    }, 
-                    hide_index=True, 
-                    use_container_width=True,
-                    key=f"editor_{bed['id']}"
-                )
-                
-                if st.button(f"💾 Save {bed['name']} Changes", key=f"save_{bed['id']}"):
-                    for _, row in edited_bed.iterrows():
-                        supabase.table("bed_plantings").update({
-                            "start_position_ft": int(row["Start (ft)"]), 
-                            "linear_feet": int(row["Length (ft)"])
-                        }).eq("id", row["DB_ID"]).execute()
-                    st.success(f"Saved {bed['name']}!")
-                    st.rerun()
-            else:
-                st.info(f"{bed['name']} is empty.")
+            html_bed = '<div class="bed-box">'
+            for p in bed['bed_plantings']:
+                left = (p['start_position_ft'] / bed['length_ft']) * 100
+                width = (p['linear_feet'] / bed['length_ft']) * 100
+                html_bed += f'<div class="crop-segment" style="left:{left}%; width:{width}%;">{p["seeds"]["common_name"]}</div>'
+            html_bed += '</div>'
+            st.markdown(html_bed, unsafe_allow_html=True)
+
+        # Spreadsheet Editor on the right
+        with col2:
+            st.markdown(f"**Data Spreadsheet:**")
+            df_bed = pd.DataFrame([
+                {"DB_ID": p['id'], "Crop": p['seeds']['common_name'], "Start (ft)": int(p['start_position_ft']), "Len (ft)": int(p['linear_feet'])}
+                for p in bed['bed_plantings']
+            ])
+            
+            edited_bed = st.data_editor(
+                df_bed, 
+                column_config={"DB_ID": None, "Crop": st.column_config.TextColumn(disabled=True)}, 
+                hide_index=True, use_container_width=True, key=f"edit_{bed['id']}"
+            )
+            
+            if st.button(f"💾 Save {bed['name']}", key=f"btn_{bed['id']}"):
+                for _, row in edited_bed.iterrows():
+                    supabase.table("bed_plantings").update({
+                        "start_position_ft": int(row["Start (ft)"]),
+                        "linear_feet": int(row["Len (ft)"])
+                    }).eq("id", row["DB_ID"]).execute()
+                st.rerun()
+
+        st.write("---")
 # --- NEW TAB 8: Community Exchange & Trades ---
 with tab8:
     st.write("### 🤝 Seed Exchange Hub")
