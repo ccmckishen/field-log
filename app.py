@@ -458,10 +458,19 @@ with tab7:
                     supabase.table("bed_plantings").update({"start_position_ft": int(row["Start (ft)"]), "linear_feet": int(row["Len (ft)"])}).eq("id", row["DB_ID"]).execute()
                 st.rerun()
             
-            with c2.expander("🗑️ Remove Crop"):
-                to_remove = st.selectbox("Pick a crop to remove", options=df_bed['DB_ID'].tolist(), format_func=lambda x: f"{df_bed[df_bed['DB_ID']==x]['Variety'].values[0]}", key=f"del_sel_{bed['id']}")
-                if st.button("Confirm Removal", key=f"confirm_del_{bed['id']}"):
-                    supabase.table("bed_plantings").delete().eq("id", to_remove).execute()
+            # --- UPDATED: BATCH REMOVE CROP ---
+            with c2.expander("🗑️ Remove Crops"):
+                # Get all crops currently in this bed
+                crop_options = {p['id']: f"{p['seeds']['variety']} ({p['start_position_ft']}ft)" for p in bed['bed_plantings']}
+                
+                # Use multiselect for batch selection
+                to_remove_list = st.multiselect("Pick crops to remove", options=list(crop_options.keys()), 
+                                               format_func=lambda x: crop_options[x], 
+                                               key=f"del_multisel_{bed['id']}")
+                
+                if st.button("Confirm Batch Removal", key=f"confirm_del_{bed['id']}"):
+                    for crop_id in to_remove_list:
+                        supabase.table("bed_plantings").delete().eq("id", crop_id).execute()
                     st.rerun()
             
             if c3.button(f"🚨 Delete Entire Row: {bed['name']}", key=f"del_bed_{bed['id']}"):
