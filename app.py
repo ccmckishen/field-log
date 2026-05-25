@@ -416,40 +416,58 @@ with tab7:
         st.rerun()
 
     # Individual Crop Editors
+    # 2. Individual Crop Editors for each bed
     for bed in raw_beds:
         with st.expander(f"Edit Crops in {bed['name']}"):
-            # Quick Add Form
-            # --- QUICK ADD SECTION (Variety-First Search) ---
-          # --- QUICK ADD SECTION (Auto-Calc & Directionality) ---
-            st.write("#### ⚡ Quick Add to this row")
             
-            # Find where the last crop ended
-            last_planting = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'], reverse=True)
-            default_start = (last_planting[0]['start_position_ft'] + last_planting[0]['linear_feet']) if last_planting else 0
+            # --- QUICK ADD SECTION (Variety-First + Auto-Calc + Undo) ---
+            st.write("#### ⚡ Quick Add to this row")
+            last_planting = sorted(bed['bed_plantings'], key=lambda x: x['id'], reverse=True)
             
             with st.form(f"quick_add_{bed['id']}", clear_on_submit=True):
                 col_a, col_b, col_c, col_d = st.columns([2, 1, 1, 1])
-                
-                # Fetch seeds
                 all_seeds = supabase.table("seeds").select("seed_id, common_name, variety").eq("user_id", st.session_state["user"].id).execute().data
                 search_query = col_a.text_input("Variety", placeholder="Type...", key=f"search_{bed['id']}")
                 filtered = [s for s in all_seeds if search_query.lower() in s['variety'].lower() or search_query.lower() in s['common_name'].lower()]
                 s_map = {f"{s['variety']} ({s['common_name']})": s['seed_id'] for s in filtered}
                 sel_s = col_a.selectbox("Select", list(s_map.keys()), key=f"sel_{bed['id']}", label_visibility="collapsed")
-                
                 direction = col_b.radio("Dir", ["L->R", "R->L"], index=0, key=f"dir_{bed['id']}")
                 f_ft = col_c.number_input("Feet", value=1, step=1, key=f"len_{bed['id']}")
+                
+                sorted_plantings = sorted(bed['bed_plantings'], key=lambda x: x['start_position_ft'], reverse=(direction == "R->L"))
+                default_start = (sorted_plantings[0]['start_position_ft'] + sorted_plantings[0]['linear_feet']) if sorted_plantings else 0
                 pos = col_d.number_input("Start", value=int(default_start), step=1, key=f"pos_{bed['id']}")
                 
-                if st.form_submit_button("Add Crop"):
+                c_submit, c_undo = st.columns([3, 1])
+                if c_submit.form_submit_button("Add Crop"):
                     if sel_s:
-                        # If Right-to-Left, start = (Bed Length - Start Pos - Feet)
                         start_val = pos if direction == "L->R" else (bed['length_ft'] - pos - f_ft)
-                        supabase.table("bed_plantings").insert({
-                            "bed_id": bed['id'], "seed_id": s_map[sel_s],
-                            "linear_feet": f_ft, "start_position_ft": start_val
-                        }).execute()
+                        supabase.table("bed_plantings").insert({"bed_id": bed['id'], "seed_id": s_map[sel_s], "linear_feet": f_ft, "start_position_ft": start_val}).execute()
                         st.rerun()
+                if last_planting and c_undo.form_submit_button("❌ Undo"):
+                    supabase.table("bed_plantings").delete().eq("id", last_planting[0]['id']).execute()
+                    st.rerun()
+
+            # --- SPREADSHEET EDITOR (With Quick Delete) ---
+            df_bed = pd.DataFrame([{"DB_ID": p['id'], "Crop": p['seeds']['common_name'], "Variety": p['seeds']['variety'], "Start (ft)": int(p['start_position_ft']), "Len (ft)": int(p['linear_feet'])} for p in bed['bed_plantings']])
+            edited_bed = st.data_editor(df_bed, column_config={"DB_ID": None, "Crop": st.column_config.TextColumn(disabled=True), "Variety": st.column_config.TextColumn(disabled=True)}, hide_index=True, use_container_width=True, key=f"edit_{bed['id']}")
+            
+            c1, c2, c3 = st.columns([1, 1, 3])
+            if c1.button(f"💾 Save {bed['name']}", key=f"save_{bed['id']}"):
+                for _, row in edited_bed.iterrows():
+                    supabase.table("bed_plantings").update({"start_position_ft": int(row["Start (ft)"]), "linear_feet": int(row["Len (ft)"])}).eq("id", row["DB_ID"]).execute()
+                st.rerun()
+            
+            with c2.expander("🗑️ Remove Crop"):
+                to_remove = st.selectbox("Pick a crop to remove", options=df_bed['DB_ID'].tolist(), format_func=lambda x: f"{df_bed[df_bed['DB_ID']==x]['Variety'].values[0]}", key=f"del_sel_{bed['id']}")
+                if st.button("Confirm Removal", key=f"confirm_del_{bed['id']}"):
+                    supabase.table("bed_plantings").delete().eq("id", to_remove).execute()
+                    st.rerun()
+            
+            if c3.button(f"🚨 Delete Entire Row: {bed['name']}", key=f"del_bed_{bed['id']}"):
+                supabase.table("bed_plantings").delete().eq("bed_id", bed['id']).execute()
+                supabase.table("garden_beds").delete().eq("id", bed['id']).execute()
+                st.rerun()
             # Spreadsheet Editor
             df_bed = pd.DataFrame([{"DB_ID": p['id'], "Crop": p['seeds']['common_name'], "Variety": p['seeds']['variety'], "Start (ft)": int(p['start_position_ft']), "Len (ft)": int(p['linear_feet'])} for p in bed['bed_plantings']])
             edited_bed = st.data_editor(df_bed, column_config={"DB_ID": None, "Crop": st.column_config.TextColumn(disabled=True), "Variety": st.column_config.TextColumn(disabled=True)}, hide_index=True, use_container_width=True, key=f"edit_{bed['id']}")
