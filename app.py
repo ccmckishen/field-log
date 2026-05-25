@@ -4,6 +4,7 @@ from supabase import create_client
 import datetime
 import altair as alt
 import requests
+import time
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="Cloud Field App", page_icon="☁️", layout="wide")
