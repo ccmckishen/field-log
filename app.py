@@ -126,7 +126,6 @@ with tab1:
                 with st.expander(f"🌿 {row['common_name']} - {row['variety']}"):
                     st.write(f"Botanical: *{row['genus']} {row['species']}*")
                     st.info(row.get('sowing_instructions', 'No instructions.'))
-
 with tab2:
     st.write("### 🌱 Current Season Planting List")
     st.write("Select the crops from your master library that you are growing this season.")
@@ -181,7 +180,9 @@ with tab2:
         else:
             st.info("No seeds selected for this season yet. Check the boxes above and hit save!")
     else:
-        st.warning("Your seed library is empty. Add seeds in Tab 1 first.")with tab2:
+        st.warning("Your seed library is empty. Add seeds in Tab 1 first.")
+
+with tab3:
     if not df.empty:
         common = st.selectbox("1. Common Name:", ["-- All --"] + sorted(df['common_name'].unique().tolist()), key="log_c")
         g_df = df if common == "-- All --" else df[df['common_name'] == common]
@@ -199,11 +200,11 @@ with tab2:
                 supabase.table("field_logs").insert({"seed_id": int(opts[sel]), "action": act, "notes": notes, "user_id": str(st.session_state["user"].id)}).execute()
                 st.success("Logged!")
 
-with tab3:
+with tab4:
     logs = supabase.table("field_logs").select("*").eq("user_id", st.session_state["user"].id).execute()
     if logs.data: st.altair_chart(alt.Chart(pd.DataFrame(logs.data)).mark_bar().encode(x='action', y='count()'), use_container_width=True)
 
-with tab4:
+with tab5:
     st.write("### 🌤️ Daily Weather Log")
     loc = supabase.table("user_settings").select("lat, lon").eq("user_id", st.session_state["user"].id).execute()
     
@@ -257,7 +258,7 @@ with tab4:
             st.altair_chart(alt.Chart(df_w).mark_line(color='orange', point=True).encode(x='date', y='wind_speed', tooltip=['date', 'wind_speed']), use_container_width=True)
             
             st.dataframe(df_w, use_container_width=True, hide_index=True)
-with tab5:
+with tab6:
     st.write("### 👤 Location Settings")
     zip_code = st.text_input("Enter your ZIP Code:")
     if st.button("Save Location"):
@@ -266,7 +267,7 @@ with tab5:
             supabase.table("user_settings").upsert({"user_id": str(st.session_state["user"].id), "lat": lat, "lon": lon}).execute()
             st.success("Location saved!")
         else: st.error("Invalid ZIP Code.")
-with tab6:
+with tab7:
     st.write("### 🌿 Garden Layout & Planner")
 
     # --- 1. SETUP SESSION STATE ---
