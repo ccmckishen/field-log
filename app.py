@@ -38,18 +38,36 @@ def fetch_weather(lat, lon):
     except Exception: return {"temp": 0.0, "rain": 0.0, "conditions": "Clear", "wind_speed": 0.0, "wind_dir": 0.0}
 
 def fetch_weather_historical(lat, lon, date_str):
-    try:
-        url = f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lon}&start_date={date_str}&end_date={date_str}&daily=temperature_2m_mean,precipitation_sum,weather_code,wind_speed_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph&timezone=America/New_York"
-        res = requests.get(url).json().get('daily', {})
-        return {
-            "temp": res.get('temperature_2m_mean', [0.0])[0],
-            "rain": res.get('precipitation_sum', [0.0])[0],
-            "conditions": WMO_CODES.get(res.get('weather_code', [0])[0], "Clear"),
-            "wind_speed": res.get('wind_speed_10m_max', [0.0])[0],
-            "wind_dir": res.get('wind_direction_10m_dominant', [0.0])[0]
-        }
-    except Exception: return {"temp": 0.0, "rain": 0.0, "conditions": "Clear", "wind_speed": 0.0, "wind_dir": 0.0}
+    # Initialize defaults
+    res_om = {"temp": 0.0, "rain": 0.0, "conditions": "Clear"}
+    res_vc = {"wind_speed": 0.0, "wind_dir": 0.0}
 
+    # 1. Fetch Temp/Rain/Conditions from Open-Meteo
+    try:
+        url = f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lon}&start_date={date_str}&end_date={date_str}&daily=temperature_2m_mean,precipitation_sum,weather_code&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=America/New_York"
+        data = requests.get(url).json().get('daily', {})
+        res_om = {
+            "temp": data.get('temperature_2m_mean', [0.0])[0],
+            "rain": data.get('precipitation_sum', [0.0])[0],
+            "conditions": WMO_CODES.get(data.get('weather_code', [0])[0], "Clear")
+        }
+    except Exception as e:
+        print(f"Open-Meteo Error: {e}")
+
+    # 2. Fetch Wind Data from Visual Crossing
+    try:
+        api_key = st.secrets["VC_API_KEY"]
+        url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{lat},{lon}/{date_str}/{date_str}?unitGroup=us&include=days&key={api_key}&contentType=json"
+        data = requests.get(url).json()['days'][0]
+        res_vc = {
+            "wind_speed": data.get('windspeed', 0.0),
+            "wind_dir": data.get('winddir', 0.0)
+        }
+    except Exception as e:
+        print(f"Visual Crossing Error: {e}")
+
+    # Return merged dictionary
+    return {**res_om, **res_vc}
 # --- 3. AUTH & LIBRARY ---
 def render_auth_ui():
     st.title("🔐 Login / Sign Up")
